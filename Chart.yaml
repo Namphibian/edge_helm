@@ -1,0 +1,12 @@
+apiVersion: v2
+name: evs
+description: EVS
+type: application
+version: 1.0.0
+appVersion: 1.0.0
+keywords:
+  - evs
+  - java
+  - springboot
+maintainers:
+  - name: ops

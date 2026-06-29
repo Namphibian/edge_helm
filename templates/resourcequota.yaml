@@ -1,0 +1,18 @@
+{{- /*
+Create a ResourceQuota in the release namespace when .Values.quota.enabled is true.
+*/ -}}
+{{- if .Values.project.quota.enabled }}
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: {{ include "app.fullname" . }}-quota
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "app.labels" . | nindent 4 }}
+spec:
+  hard:
+{{- $q := .Values.project.quota.hard | default dict }}
+{{- range $k, $v := $q }}
+    {{ $k }}: "{{ $v }}"
+{{- end }}
+{{- end }}

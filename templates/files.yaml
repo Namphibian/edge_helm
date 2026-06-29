@@ -1,0 +1,43 @@
+{{- $root := . -}}
+{{- $files := $root.Values.app.files | default (list) -}}
+{{- range $idx, $f := $files }}
+{{- $type := lower (default "configmap" $f.type) -}}
+{{- if and (ne $type "configmap") (ne $type "secret") -}}
+{{- fail (printf "app.files[%d].type must be configMap or secret" $idx) -}}
+{{- end -}}
+{{- if not $f.name -}}
+{{- fail (printf "app.files[%d].name is required" $idx) -}}
+{{- end -}}
+{{- if not $f.mountPath -}}
+{{- fail (printf "app.files[%d].mountPath is required" $idx) -}}
+{{- end -}}
+{{- if not (hasKey $f "data") -}}
+{{- fail (printf "app.files[%d].data is required" $idx) -}}
+{{- end -}}
+{{- $name := include "app.fileResourceName" (list $root $f $idx) -}}
+{{- $key := default "content" $f.subPath -}}
+{{- $content := trim $f.data -}}
+---
+apiVersion: v1
+kind: {{ ternary "Secret" "ConfigMap" (eq $type "secret") }}
+metadata:
+  name: {{ $name }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "app.labels" $root | nindent 4 }}
+{{- if eq $type "secret" }}
+type: Opaque
+stringData:
+  {{ $key }}: |
+{{ $content | nindent 4 }}
+{{- else }}
+data:
+  {{ $key }}: |
+{{ $content | nindent 4 }}
+{{ end }}
+{{ end }}
+
+
+
+
+

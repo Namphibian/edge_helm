@@ -1,0 +1,63 @@
+{{- $root := . -}}
+{{- with $root.Values.app.networkPolicy }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "app.fullname" $root }}-ingress
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "app.labels" $root | nindent 4 }}
+  {{- if .ingress.annotations }}
+  annotations:
+    {{- include "app.annotations" (list .ingress.annotations $root) | trim | nindent 4 }}
+  {{- end }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "app.selectorLabels" $root | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        {{- range .ingress.allowedSources }}
+        - {{ .type }}:
+            matchLabels:
+              {{- range $k, $v := .matchLabels }}
+              {{ $k }}: {{ $v | quote }}
+              {{- end }}
+        {{- end }}
+      ports:
+        {{- range .ingress.ports }}
+        {{- $portDef := index $root.Values.app.ports . }}
+        - protocol: {{ $portDef.protocol | default "TCP" }}
+          port: {{ include "app.resolvePort" (list $portDef.port $root.Values.app.configData (printf "networkpolicy ingress port %s" .)) }}
+        {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "app.fullname" $root }}-egress
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "app.labels" $root | nindent 4 }}
+  {{- if .egress.annotations }}
+  annotations:
+    {{- include "app.annotations" (list .egress.annotations $root) | trim | nindent 4 }}
+  {{- end }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "app.selectorLabels" $root | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    {{- range .egress.allowedHosts }}
+    - to:
+        - ipBlock:
+            cidr: {{ include "app.configValue" (list .ip $root.Values.app.configData (printf "networkpolicy egress %s ip" .name)) }}/32
+      ports:
+        - protocol: TCP
+          port: {{ include "app.configValue" (list .port $root.Values.app.configData (printf "networkpolicy egress %s port" .name)) }}
+    {{- end }}
+{{- end }}

@@ -1,0 +1,810 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "edge_helm values schema",
+  "type": "object",
+  "required": [
+    "project",
+    "app"
+  ],
+  "additionalProperties": true,
+  "definitions": {
+    "configDataRef": {
+      "type": "object",
+      "required": [
+        "configDataKey"
+      ],
+      "properties": {
+        "configDataKey": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "Supports dotted sub-fields like buyboostOpenapiHost.host"
+        }
+      },
+      "additionalProperties": false
+    },
+    "dnsLabel": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+      "maxLength": 63
+    },
+    "k8sPortName": {
+      "type": "string",
+      "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
+      "maxLength": 15
+    },
+    "absolutePath": {
+      "type": "string",
+      "pattern": "^/.*"
+    },
+    "relativeFilePath": {
+      "type": "string",
+      "pattern": "^[^/].*"
+    },
+    "ipv4": {
+      "type": "string",
+      "pattern": "^(?:25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})(?:\\.(?:25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})){3}$"
+    },
+    "hostnameOrIpv4": {
+      "type": "string",
+      "anyOf": [
+        {
+          "pattern": "^(?:25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})(?:\\.(?:25[0-5]|2[0-4][0-9]|1?[0-9]{1,2})){3}$"
+        },
+        {
+          "pattern": "^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(?:\\.(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?))*$"
+        }
+      ]
+    },
+    "portNumber": {
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        {
+          "type": "string",
+          "pattern": "^([1-9][0-9]{0,4})$"
+        }
+      ]
+    },
+    "ipOrRef": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/ipv4"
+        },
+        {
+          "$ref": "#/definitions/configDataRef"
+        }
+      ]
+    },
+    "portOrRef": {
+      "oneOf": [
+        {
+          "$ref": "#/definitions/portNumber"
+        },
+        {
+          "$ref": "#/definitions/configDataRef"
+        }
+      ]
+    },
+    "mapOrLiteralString": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/definitions/configDataRef"
+        }
+      ]
+    },
+    "mapOrLiteralInt": {
+      "oneOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        {
+          "$ref": "#/definitions/configDataRef"
+        }
+      ]
+    },
+    "mapOrLiteralAny": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "array"
+        },
+        {
+          "$ref": "#/definitions/configDataRef"
+        }
+      ]
+    },
+    "annotationValue": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "integer"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/definitions/configDataRef"
+        }
+      ]
+    },
+    "configDataEntry": {
+      "type": "object",
+      "required": [
+        "description",
+        "value",
+        "type"
+      ],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "int",
+            "string",
+            "list",
+            "url"
+          ]
+        },
+        "value": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "array"
+            },
+            {
+              "type": "object"
+            }
+          ]
+        },
+        "joinChar": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4,
+          "description": "Optional delimiter for list -> string env rendering"
+        }
+      },
+      "additionalProperties": true,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "list"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "array"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "url"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "value": {
+                "type": "object",
+                "required": [
+                  "host"
+                ],
+                "properties": {
+                  "scheme": {
+                    "type": "string",
+                    "enum": [
+                      "http",
+                      "https"
+                    ]
+                  },
+                  "host": {
+                    "$ref": "#/definitions/hostnameOrIpv4"
+                  },
+                  "port": {
+                    "$ref": "#/definitions/portNumber"
+                  },
+                  "path": {
+                    "type": "string",
+                    "pattern": "^/.*"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      ]
+    },
+    "servicePortLink": {
+      "type": "object",
+      "required": [
+        "sourcePort",
+        "targetPort"
+      ],
+      "properties": {
+        "sourcePort": {
+          "type": "string"
+        },
+        "targetPort": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "probe": {
+      "type": "object",
+      "required": [
+        "tcpSocket",
+        "initialDelaySeconds",
+        "periodSeconds",
+        "timeoutSeconds",
+        "failureThreshold"
+      ],
+      "properties": {
+        "tcpSocket": {
+          "type": "object",
+          "required": [
+            "port"
+          ],
+          "properties": {
+            "port": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": false
+        },
+        "initialDelaySeconds": {
+          "type": "integer"
+        },
+        "periodSeconds": {
+          "type": "integer"
+        },
+        "timeoutSeconds": {
+          "type": "integer"
+        },
+        "failureThreshold": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "properties": {
+    "project": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/definitions/dnsLabel"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "environment": {
+          "type": "string"
+        },
+        "labels": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "quota": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "hard": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "app": {
+      "type": "object",
+      "required": [
+        "configData",
+        "image",
+        "ports",
+        "services",
+        "env",
+        "networkPolicy"
+      ],
+      "properties": {
+        "configData": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/definitions/configDataEntry"
+          }
+        },
+        "image": {
+          "type": "object",
+          "required": [
+            "repository",
+            "tag",
+            "pullPolicy"
+          ],
+          "properties": {
+            "repository": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[^\\s]+$"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            },
+            "imagePullSecrets": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "name"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "deployment": {
+          "type": "object",
+          "properties": {
+            "annotations": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "route": {
+          "type": "object",
+          "properties": {
+            "annotations": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "replicaCount": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "$ref": "#/definitions/configDataRef"
+            }
+          ]
+        },
+        "annotationSets": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/definitions/annotationValue"
+            }
+          }
+        },
+        "resources": {
+          "type": "object",
+          "required": [
+            "qos"
+          ],
+          "properties": {
+            "qos": {
+              "type": "string",
+              "enum": [
+                "Guaranteed",
+                "Burstable",
+                "BestEffort"
+              ]
+            },
+            "requests": {
+              "type": "object",
+              "properties": {
+                "memory": {
+                  "$ref": "#/definitions/mapOrLiteralString"
+                },
+                "cpu": {
+                  "$ref": "#/definitions/mapOrLiteralInt"
+                }
+              },
+              "additionalProperties": true
+            },
+            "limits": {
+              "type": "object",
+              "properties": {
+                "memory": {
+                  "$ref": "#/definitions/mapOrLiteralString"
+                },
+                "cpu": {
+                  "$ref": "#/definitions/mapOrLiteralInt"
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "persistence": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "storageClass",
+              "accessMode",
+              "size",
+              "mountPath"
+            ],
+            "properties": {
+              "annotations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "backup": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "frequency": {
+                    "type": "string"
+                  },
+                  "retention": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "annotations": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "additionalProperties": true
+              },
+              "storageClass": {
+                "type": "string"
+              },
+              "accessMode": {
+                "type": "string"
+              },
+              "size": {
+                "type": "string"
+              },
+              "name": {
+                "$ref": "#/definitions/k8sPortName"
+              },
+              "mountPath": {
+                "type": "string"
+              },
+              "claimName": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "ports": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "port",
+              "name",
+              "protocol"
+            ],
+            "properties": {
+              "port": {
+                "$ref": "#/definitions/mapOrLiteralInt"
+              },
+              "name": {
+                "type": "string"
+              },
+              "protocol": {
+                "type": "string",
+                "enum": [
+                  "TCP",
+                  "UDP",
+                  "SCTP"
+                ]
+              },
+              "description": {
+                "type": "string"
+              },
+              "containerPort": {
+                "oneOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "services": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "type",
+              "ports"
+            ],
+            "properties": {
+              "name": {
+                "$ref": "#/definitions/dnsLabel"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "ClusterIP",
+                  "NodePort",
+                  "LoadBalancer",
+                  "ExternalName"
+                ]
+              },
+              "description": {
+                "type": "string"
+              },
+              "annotations": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "ports": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/servicePortLink"
+                }
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "probes": {
+          "type": "object",
+          "required": [
+            "liveness",
+            "readiness"
+          ],
+          "properties": {
+            "liveness": {
+              "$ref": "#/definitions/probe"
+            },
+            "readiness": {
+              "$ref": "#/definitions/probe"
+            }
+          },
+          "additionalProperties": true
+        },
+        "networkPolicy": {
+          "type": "object",
+          "required": [
+            "ingress",
+            "egress"
+          ],
+          "properties": {
+            "ingress": {
+              "type": "object",
+              "required": [
+                "allowedSources",
+                "ports"
+              ],
+              "properties": {
+                "annotations": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "allowedSources": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "type",
+                      "matchLabels"
+                    ],
+                    "properties": {
+                      "type": {
+                        "type": "string",
+                        "enum": [
+                          "podSelector",
+                          "namespaceSelector"
+                        ]
+                      },
+                      "matchLabels": {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "additionalProperties": true
+                  }
+                },
+                "ports": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "additionalProperties": true
+            },
+            "egress": {
+              "type": "object",
+              "required": [
+                "allowedHosts"
+              ],
+              "properties": {
+                "annotations": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "allowedHosts": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "name",
+                      "ip",
+                      "port"
+                    ],
+                    "properties": {
+                      "name": {
+                        "$ref": "#/definitions/dnsLabel"
+                      },
+                      "ip": {
+                        "$ref": "#/definitions/ipOrRef"
+                      },
+                      "port": {
+                        "$ref": "#/definitions/portOrRef"
+                      }
+                    },
+                    "additionalProperties": true
+                  }
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "additionalProperties": true
+        },
+        "env": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "$ref": "#/definitions/mapOrLiteralAny"
+          }
+        },
+        "files": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "mountPath",
+              "type",
+              "data"
+            ],
+            "properties": {
+              "name": {
+                "$ref": "#/definitions/dnsLabel"
+              },
+              "mountPath": {
+                "$ref": "#/definitions/absolutePath"
+              },
+              "subPath": {
+                "$ref": "#/definitions/relativeFilePath"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "configMap",
+                  "secret"
+                ]
+              },
+              "data": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}
+

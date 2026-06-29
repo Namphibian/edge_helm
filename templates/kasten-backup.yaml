@@ -1,0 +1,27 @@
+{{- $root := . -}}
+{{- range $name, $cfg := $root.Values.app.persistence }}
+{{- if and $cfg.backup $cfg.backup.enabled }}
+---
+apiVersion: config.kio.kasten.io/v1alpha1
+kind: Policy
+metadata:
+  name: {{ include "app.fullname" $root }}-{{ (trim (include "app.kebab" $name)) }}-backup
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "app.labels" $root | nindent 4 }}
+  {{- if $cfg.backup.annotations }}
+  annotations:
+    {{- include "app.annotations" (list $cfg.backup.annotations $root) | trim | nindent 4 }}
+  {{- end }}
+spec:
+  comment: "Backup policy for {{ $name }} PVC"
+  frequency: {{ $cfg.backup.frequency | default "@daily" | quote }}
+  retention:
+    daily: {{ $cfg.backup.retention | default 7 }}
+  selector:
+    matchLabels:
+      {{- include "app.selectorLabels" $root | nindent 6 }}
+  actions:
+    - action: backup
+{{- end }}
+{{- end }}

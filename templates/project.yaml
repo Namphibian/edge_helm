@@ -1,0 +1,10 @@
+apiVersion: project.openshift.io/v1
+kind: Project
+metadata:
+  name: {{ .Values.project.name | quote }}
+  labels:
+    {{- toYaml .Values.project.labels | nindent 4 }}
+    {{- include "app.labels" . | nindent 4 }}
+  annotations:
+    openshift.io/display-name: {{ .Values.project.displayName | quote }}
+    openshift.io/description: {{ .Values.project.description | quote }}

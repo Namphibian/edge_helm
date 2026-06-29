@@ -1,0 +1,28 @@
+{{- $root := . -}}
+{{- range $svc := $root.Values.app.services }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "app.fullname" $root }}-{{ $svc.name }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "app.labels" $root | nindent 4 }}
+  {{- if $svc.annotations }}
+  annotations:
+    {{- include "app.annotations" (list $svc.annotations $root) | trim | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $svc.type | default "ClusterIP" }}
+  selector:
+    {{- include "app.selectorLabels" $root | nindent 4 }}
+  ports:
+    {{- range $sp := $svc.ports }}
+    {{- $srcDef := index $root.Values.app.ports $sp.sourcePort }}
+    {{- $tgtDef := index $root.Values.app.ports $sp.targetPort }}
+    - name: {{ lower $srcDef.name }}
+      port: {{ include "app.resolvePort" (list $srcDef.port $root.Values.app.configData (printf "service %s source port %s" $svc.name $sp.sourcePort)) }}
+      targetPort: {{ include "app.resolvePort" (list $tgtDef.port $root.Values.app.configData (printf "service %s target port %s" $svc.name $sp.targetPort)) }}
+      protocol: {{ $srcDef.protocol | default "TCP" }}
+    {{- end }}
+{{- end }}

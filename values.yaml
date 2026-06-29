@@ -1,0 +1,574 @@
+# =============================================================================
+# EVS Helm Chart - values.yaml
+# =============================================================================
+# This file contains all configurable values for the EVS (Edge Video/Event
+# Storage) Helm chart. It is organised into two main sections:
+#
+#   1. project  - Namespace-level metadata, labels, and resource quotas
+#   2. app      - Application configuration (images, ports, env, resources, etc.)
+#
+# The chart uses a "configData / configDataKey" pattern for shared values.
+# Any field can either hold a literal value or a map with a `configDataKey`
+# that references an entry in `app.configData`. The template helpers resolve
+# both forms transparently. See the README.md for full details.
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Project-level information
+# -----------------------------------------------------------------------------
+# These values are used to create the OpenShift Project / Namespace resource
+# and an optional ResourceQuota.
+project:
+  # Short name used as the namespace / project name
+  name: "evs"
+
+  # Human-readable display name shown in the OpenShift console
+  displayName: "EVS application for device observation data."
+
+  # Longer description of the project's purpose
+  description: |
+    This application will upload video and events data from handheld devices
+    to Hanshow servers for processing. Event data is also uploaded for analysis.
+
+  # Target environment (e.g. dev, staging, prod)
+  environment: dev
+
+  # Labels applied to the namespace / project resource
+  labels:
+    environment: "development"
+    team: "Edge"
+
+  # ResourceQuota settings — limits the total resources consumed in this namespace
+  quota:
+    # Set to false to skip creating the ResourceQuota
+    enabled: true
+    # Hard limits enforced by the quota
+    hard:
+      requests.cpu: "2"
+      requests.memory: "4Gi"
+      limits.cpu: "4"
+      limits.memory: "8Gi"
+      pods: "10"
+      persistentvolumeclaims: "5"
+
+# -----------------------------------------------------------------------------
+# Application configuration
+# -----------------------------------------------------------------------------
+app:
+
+  # ---------------------------------------------------------------------------
+  # configData — Centralised configuration registry
+  # ---------------------------------------------------------------------------
+  # Every entry follows the schema:
+  #   <key>:
+  #     description: "<human-readable description>"
+  #     value: <default value>
+  #     type: "int" | "string" | "list"
+  #     joinChar: ","  # optional, only for list values rendered into env vars
+  #
+  # Other sections reference these entries via `configDataKey: <key>`.
+  # Descriptions are rendered as YAML comments above env vars in the Deployment.
+  # Override any value at install time with:
+  #   --set app.configData.<key>.value=<newValue>
+  # ---------------------------------------------------------------------------
+  configData:
+
+    # -- Ports ------------------------------------------------------------------
+
+    # The port the server will listen on for HTTP/S requests
+    serverPort:
+      description: "The port the server will listen on for HTTP/S requests"
+      value: "8080"
+      type: "int"
+    # Port used for Prometheus metrics scraping
+    prometheusPort:
+      description: "Port used for Prometheus metrics scraping"
+      value: "9090"
+      type: "int"
+
+    # -- Spring Boot / Servlet settings -----------------------------------------
+
+    # The servlet context path for the application
+    serverServletContextPath:
+      description: "The servlet context path for the application"
+      value: "/evs"
+      type: "string"
+    # The application server version
+    serverVersion:
+      description: "The application server version"
+      value: "1.0.1"
+      type: "string"
+
+    # -- Tomcat tuning parameters -----------------------------------------------
+
+    # Maximum number of Tomcat worker threads
+    serverTomcatMaxThreads:
+      description: "Maximum number of Tomcat worker threads"
+      value: "500"
+      type: "string"
+    # Minimum number of Tomcat spare threads
+    serverTomcatMinSpareThreads:
+      description: "Minimum number of Tomcat spare threads"
+      value: "200"
+      type: "string"
+    # Maximum number of Tomcat connections
+    serverTomcatMaxConnections:
+      description: "Maximum number of Tomcat connections"
+      value: "20000"
+      type: "string"
+    # Maximum queue length for incoming connection requests
+    serverTomcatAcceptCount:
+      description: "Maximum queue length for incoming connection requests"
+      value: "1000"
+      type: "string"
+    # Tomcat connection timeout in milliseconds
+    serverTomcatConnectionTimeout:
+      description: "Tomcat connection timeout in milliseconds"
+      value: "600000"
+      type: "string"
+    # Tomcat keep-alive timeout in milliseconds
+    serverTomcatKeepAliveTimeout:
+      description: "Tomcat keep-alive timeout in milliseconds"
+      value: "600000"
+      type: "string"
+    # Maximum size of HTTP form post content in bytes
+    serverTomcatMaxHttpFormPostSize:
+      description: "Maximum size of HTTP form post content in bytes"
+      value: "104857600"
+      type: "string"
+
+    # -- OpenAPI authentication -------------------------------------------------
+
+    # List of OpenAPI user credentials and their org access
+    openapiUsers:
+      description: "List of OpenAPI user credentials and their org access"
+      value:
+        - ak: "test1"
+          sk: "000000"
+          orgs:
+            - "**"
+      type: "list"
+
+    # -- Storage settings -------------------------------------------------------
+
+    # Maximum number of concurrent uploads
+    storageUploadMaxConcurrency:
+      description: "Maximum number of concurrent uploads"
+      value: "5"
+      type: "string"
+    # List of file extensions that are forbidden from upload
+    storageForbiddenFileTypes:
+      description: "List of file extensions that are forbidden from upload"
+      value:
+        - ".exe"
+        - ".com"
+        - ".dll"
+        - ".sys"
+        - ".scr"
+        - ".bat"
+        - ".cmd"
+        - ".ps1"
+        - ".psm1"
+        - ".vbs"
+        - ".vbe"
+        - ".js"
+        - ".jse"
+        - ".wsf"
+        - ".msc"
+        - ".hta"
+        - ".ear"
+        - ".ipa"
+        - ".docm"
+        - ".xlsm"
+        - ".pptm"
+        - ".dotm"
+        - ".xltm"
+        - ".potm"
+        - ".docx"
+        - ".xlsx"
+        - ".pptx"
+        - ".rtf"
+        - ".sql"
+        - ".db"
+        - ".sqlite"
+        - ".mdb"
+        - ".accdb"
+        - ".ini"
+        - ".key"
+        - ".cert"
+        - ".pfx"
+        - ".php"
+        - ".php3"
+        - ".php4"
+        - ".php5"
+        - ".phtml"
+        - ".asp"
+        - ".aspx"
+        - ".ascx"
+        - ".jsp"
+        - ".jspx"
+        - ".java"
+        - ".cgi"
+        - ".pl"
+        - ".lnk"
+        - ".url"
+        - ".desktop"
+        - ".bin"
+        - ".dat"
+        - ".iso"
+        - ".img"
+        - ".vhd"
+        - ".vmdk"
+        - ".cab"
+        - ".cmdlet"
+      type: "list"
+      joinChar: ","
+
+    # -- Buyboost cloud service integration -------------------------------------
+
+    # Buyboost cloud service host URL for egress traffic
+    buyboostOpenapiHost:
+      description: "Buyboost cloud service host URL for egress traffic"
+      value:
+        scheme: "http"
+        host: "172.16.125.46"
+        port: 8185
+        path: "/buyboost"
+      type: "url"
+    # Buyboost OpenAPI access key
+    buyboostOpenapiAk:
+      description: "Buyboost OpenAPI access key"
+      value: "test"
+      type: "string"
+    # Buyboost OpenAPI secret key
+    buyboostOpenapiSk:
+      description: "Buyboost OpenAPI secret key"
+      value: "000000"
+      type: "string"
+
+    # -- HaiDP cloud service integration ----------------------------------------
+
+    # HaiDP cloud service host URL for egress traffic
+    haidpOpenapiHost:
+      description: "HaiDP cloud service host URL for egress traffic"
+      value:
+        scheme: "http"
+        host: "10.13.108.6"
+        port: 9192
+        path: "/api1"
+      type: "url"
+    # HaiDP OpenAPI code identifier
+    haidpOpenapiCode:
+      description: "HaiDP OpenAPI code identifier"
+      value: "edge"
+      type: "string"
+    # HaiDP OpenAPI description
+    haidpOpenapiDesc:
+      description: "HaiDP OpenAPI description"
+      value: "EVS"
+      type: "string"
+    # HaiDP OpenAPI access key
+    haidpOpenapiAk:
+      description: "HaiDP OpenAPI access key"
+      value: "IJpBSwnImQArnXRarbod"
+      type: "string"
+    # HaiDP OpenAPI secret key
+    haidpOpenapiSk:
+      description: "HaiDP OpenAPI secret key"
+      value: "vr1C8tELhFoqK3SccL3vRcdZDKWsudJSSu9vkob8"
+      type: "string"
+
+    # -- Scheduler settings -----------------------------------------------------
+
+    # Daily upload scheduler start time (local time, HH:mm)
+    schedulerUploadStartTime:
+      description: "Daily upload scheduler start time (local time, HH:mm)"
+      value: "09:00"
+      type: "string"
+    # Daily upload scheduler end time (local time, HH:mm)
+    schedulerUploadEndTime:
+      description: "Daily upload scheduler end time (local time, HH:mm)"
+      value: "18:30"
+      type: "string"
+
+  # ---------------------------------------------------------------------------
+  # Container image
+  # ---------------------------------------------------------------------------
+  image:
+    # Container registry and image name
+    repository: default-route-openshift-image-registry.apps-crc.testing/evs/evs
+    # Image tag / version to deploy
+    tag: dev
+    # Pull policy: Always, IfNotPresent, or Never
+    pullPolicy: IfNotPresent
+    # Registry credentials (list of secret names)
+    imagePullSecrets:
+      - name: xxx
+
+  # ---------------------------------------------------------------------------
+  # Deployment metadata
+  # ---------------------------------------------------------------------------
+  # Optional annotations for the Deployment resource. Specify a list of
+  # annotationSet names (e.g. ["prometheus", "istio"]).
+  deployment:
+    annotations: [ ]
+
+  # ---------------------------------------------------------------------------
+  # Route metadata
+  # ---------------------------------------------------------------------------
+  # Optional annotations for the OpenShift Route resource.
+  route:
+    annotations: [ ]
+
+  # ---------------------------------------------------------------------------
+  # Replica count
+  # ---------------------------------------------------------------------------
+  # Can be a literal integer or a configDataKey reference.
+  # Example literal:  replicaCount: 3
+  replicaCount: 1
+
+  # ---------------------------------------------------------------------------
+  # Annotation sets — reusable annotation groups
+  # ---------------------------------------------------------------------------
+  # Define named sets of annotations here, then reference them by name in
+  # services (or other resources). Annotation values support the configDataKey
+  # pattern, so port numbers etc. stay in sync with configData.
+  annotationSets:
+    prometheus:
+      prometheus.io/scrape: "true"
+      prometheus.io/port:
+        configDataKey: prometheusPort
+
+    # AWS internal load balancer annotation
+    awsInternal:
+      service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+
+    # Istio sidecar annotations
+    istio:
+      traffic.sidecar.istio.io/includeInboundPorts:
+        configDataKey: "serverPort"
+
+  # ---------------------------------------------------------------------------
+  # Resource requests / limits with QoS support
+  # ---------------------------------------------------------------------------
+  # qos controls how the Deployment resources block is rendered:
+  #   Guaranteed  — requests are set equal to limits automatically (only
+  #                 configure limits; requests are ignored)
+  #   Burstable   — requests and limits are rendered independently
+  #   BestEffort  — no resources block is rendered at all
+  resources:
+    qos: "BestEffort"
+    requests:
+      memory: "6Gi"
+      cpu: "750"
+    limits:
+      memory: "8Gi"
+      cpu: "1000"
+  # ---------------------------------------------------------------------------
+  # Persistent storage
+  # ---------------------------------------------------------------------------
+  # Each key under `persistence` creates a PVC and a volume mount.
+  # Optional `backup` block enables Kasten K10 daily backups for the volume.
+  # Optional `annotations` list applies annotationSets to the PVC.
+  # Optional `backup.annotations` list applies annotationSets to the Kasten Policy CR.
+  persistence:
+    dataVolume:
+      annotations: [ ]
+      # Kasten K10 backup configuration for this volume
+      backup:
+        # Set to true to create a Kasten Policy CR and annotate the PVC
+        enabled: true
+        # Cron-style frequency (e.g. "@daily", "@hourly", "0 */6 * * *")
+        frequency: "@daily"
+        # Number of daily snapshots to retain
+        retention: 7
+      # Kubernetes StorageClass to use
+      storageClass: "crc-csi-hostpath-provisioner"
+      accessMode: ReadWriteOnce
+      size: 20Gi
+      name: evs-storage
+      mountPath: /app/storage
+
+  # ---------------------------------------------------------------------------
+  # Port definitions
+  # ---------------------------------------------------------------------------
+  # Named port definitions. Each port's `port` value can be a literal or a
+  # configDataKey reference. These are referenced by name in services, probes,
+  # and network policies.
+  ports:
+    serverPort:
+      port:
+        configDataKey: serverPort
+      name: "http-tomcat"
+      protocol: TCP
+      description: "Port used by the application to run the server aka listening port."
+      containerPort: "true"
+    prometheusPort:
+      port:
+        configDataKey: prometheusPort
+      name: "tcp-prom"
+      protocol: TCP
+      description: "Used to configure the prometheus port for scraping"
+
+
+  # ---------------------------------------------------------------------------
+  # Services
+  # ---------------------------------------------------------------------------
+  # List of Kubernetes Service resources to create. Each service references
+  # port definitions from `ports` above and annotation sets from `annotationSets`.
+  services:
+    - name: api
+      type: ClusterIP
+      description: "This service hosts the API ports so that we can expose it to the world"
+      annotations:
+        - prometheus
+        - istio
+      ports:
+        - sourcePort: serverPort
+          targetPort: serverPort
+        - sourcePort: prometheusPort
+          targetPort: prometheusPort
+
+
+  # ---------------------------------------------------------------------------
+  # Health probes
+  # ---------------------------------------------------------------------------
+  # Liveness and readiness probes use TCP socket checks. The `port` field
+  # references a key in `app.ports` (not a raw port number).
+  probes:
+    liveness:
+      tcpSocket:
+        # reference the serverPort above.
+        port: serverPort
+      initialDelaySeconds: 60
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+    readiness:
+      tcpSocket:
+        # reference the serverPort above.
+        port: serverPort
+      initialDelaySeconds: 30
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 3
+
+  # ---------------------------------------------------------------------------
+  # Network policies
+  # ---------------------------------------------------------------------------
+  # Controls ingress and egress traffic at the Kubernetes NetworkPolicy level.
+  # Ingress ports reference keys from `app.ports`.
+  # Egress hosts are specified by IP and port.
+  # Both ingress and egress sections support an optional `annotations` list
+  # referencing annotationSet names.
+  networkPolicy:
+    ingress:
+      # Allow traffic from the route/service to the application pods only
+      allowedSources:
+        - type: podSelector
+          matchLabels:
+            app.kubernetes.io/name: evs
+      # Only allow traffic on the server port
+      ports:
+        - serverPort
+    egress:
+      # Allow egress to buyboost and haidp cloud services
+      allowedHosts:
+        - name: buyboost
+          ip:
+            configDataKey: buyboostOpenapiHost.host
+          port:
+            configDataKey: buyboostOpenapiHost.port
+        - name: haidp
+          ip:
+            configDataKey: haidpOpenapiHost.host
+          port:
+            configDataKey: haidpOpenapiHost.port
+
+  # ---------------------------------------------------------------------------
+  # Environment variables
+  # ---------------------------------------------------------------------------
+  # Each entry becomes a container env var in the Deployment. Values can be:
+  #   - A literal string/int:       MY_VAR: "hello"
+  #   - A configDataKey reference:  MY_VAR: { configDataKey: someKey }
+  #
+  # When using configDataKey, the matching configData description is rendered
+  # as a YAML comment above the env var in the template output.
+  # ---------------------------------------------------------------------------
+  env:
+    # -- Server core settings
+    SERVER_PORT:
+      configDataKey: serverPort
+    SERVER_SERVLET_CONTEXT_PATH:
+      configDataKey: serverServletContextPath
+    SERVER_VERSION:
+      configDataKey: serverVersion
+
+    # -- Tomcat tuning
+    SERVER_TOMCAT_MAX_THREADS:
+      configDataKey: serverTomcatMaxThreads
+    SERVER_TOMCAT_MIN_SPARE_THREADS:
+      configDataKey: serverTomcatMinSpareThreads
+    SERVER_TOMCAT_MAX_CONNECTIONS:
+      configDataKey: serverTomcatMaxConnections
+    SERVER_TOMCAT_ACCEPT_COUNT:
+      configDataKey: serverTomcatAcceptCount
+    SERVER_TOMCAT_CONNECTION_TIMEOUT:
+      configDataKey: serverTomcatConnectionTimeout
+    SERVER_TOMCAT_KEEP_ALIVE_TIMEOUT:
+      configDataKey: serverTomcatKeepAliveTimeout
+    SERVER_TOMCAT_MAX_HTTP_FORM_POST_SIZE:
+      configDataKey: serverTomcatMaxHttpFormPostSize
+
+    # -- OpenAPI credentials
+    OPENAPI_USERS:
+      configDataKey: openapiUsers
+
+    # -- Storage and scheduler
+    STORAGE_UPLOAD_MAX_CONCURRENCY:
+      configDataKey: storageUploadMaxConcurrency
+    STORAGE_FORBIDDEN_FILE_TYPES:
+      configDataKey: storageForbiddenFileTypes
+    SCHEDULER_UPLOAD_START_TIME:
+      configDataKey: schedulerUploadStartTime
+    SCHEDULER_UPLOAD_END_TIME:
+      configDataKey: schedulerUploadEndTime
+
+    # -- Buyboost cloud service
+    BUYBOOST_OPENAPI_HOST:
+      configDataKey: buyboostOpenapiHost
+    BUYBOOST_OPENAPI_AK:
+      configDataKey: buyboostOpenapiAk
+    BUYBOOST_OPENAPI_SK:
+      configDataKey: buyboostOpenapiSk
+
+    # -- HaiDP cloud service
+    HAIDP_OPENAPI_HOST:
+      configDataKey: haidpOpenapiHost
+    HAIDP_OPENAPI_CODE:
+      configDataKey: haidpOpenapiCode
+    HAIDP_OPENAPI_DESC:
+      configDataKey: haidpOpenapiDesc
+    HAIDP_OPENAPI_AK:
+      configDataKey: haidpOpenapiAk
+    HAIDP_OPENAPI_SK:
+      configDataKey: haidpOpenapiSk
+
+  files:
+    - name: "logback-settings"
+      mountPath: "/app/config/"
+      subPath: "logback-spring.xml"
+      type: "configMap"
+      data: |
+        <some>
+          <config></config>
+        </some>
+
+    - name: "logback-secrets"
+      mountPath: "/app/config/"
+      subPath: "logback-secrets.xml"
+      type: "secret"
+      data: |
+        <some>
+          <config></config>
+        </some>
