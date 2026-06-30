@@ -1,0 +1,23 @@
+Thank you for installing {{ include "app.fullname" . }}.
+
+Namespace: {{ .Release.Namespace }}
+Chart: {{ .Chart.Name }} {{ .Chart.Version }}
+App Version: {{ .Chart.AppVersion }}
+
+Useful commands:
+  helm status {{ .Release.Name }} -n {{ .Release.Namespace }}
+  kubectl get pods -n {{ .Release.Namespace }}
+  kubectl get svc -n {{ .Release.Namespace }}
+
+{{- if .Values.app.services }}
+Services defined in values:
+{{- range .Values.app.services }}
+  - {{ .name }} (type: {{ .type }})
+{{- end }}
+{{- end }}
+
+{{- if .Values.app.route }}
+Note: OpenShift Route is managed by templates/route.yaml.
+Use `oc get route -n {{ .Release.Namespace }}` to inspect exposure.
+{{- end }}
+
