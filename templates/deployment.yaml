@@ -19,13 +19,14 @@ spec:
       labels:
         {{- include "app.selectorLabels" . | nindent 8 }}
     spec:
+      serviceAccountName: {{ include "app.fullname" . }}-svc
       {{- with .Values.app.image.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- $root := . }}
       {{- $pmap := $root.Values.app.persistence | default dict }}
-      {{- $fmap := $root.Values.app.files | default (list) }}
+      {{- $fmap := $root.Values.app.configFiles | default (list) }}
       containers:
       - name: {{ $root.Chart.Name }}
         image: {{ $root.Values.app.image.repository }}:{{ $root.Values.app.image.tag }}
@@ -51,25 +52,61 @@ spec:
             value: '{{ include "app.envValue" (list $value $root.Values.app.configData (printf "env %s" $key)) }}'
           {{- end }}
         # Liveness Probe
-        {{- $liveKey := $root.Values.app.probes.liveness.tcpSocket.port }}
-        {{- $livePort := index $root.Values.app.ports $liveKey }}
+        {{- $liveCfg := $root.Values.app.probes.liveness -}}
+        {{- $liveTypeRaw := $liveCfg.probeType -}}
+        {{- if not $liveTypeRaw }}{{- fail "probes.liveness.probeType is required" }}{{- end }}
+        {{- $liveTypeName := lower $liveTypeRaw -}}
+        {{- $liveType := index $root.Values.app.probeTypes $liveTypeRaw -}}
+        {{- if not $liveType }}{{- fail (printf "probes.liveness.probeType %q not found under app.probeTypes" $liveTypeRaw) }}{{- end }}
         livenessProbe:
+          {{- if eq $liveTypeName "tcpsocket" }}
           tcpSocket:
-            port: {{ include "app.resolvePort" (list $livePort.port $root.Values.app.configData "liveness probe") }}
-          initialDelaySeconds: {{ $root.Values.app.probes.liveness.initialDelaySeconds }}
-          periodSeconds: {{ $root.Values.app.probes.liveness.periodSeconds }}
-          timeoutSeconds: {{ $root.Values.app.probes.liveness.timeoutSeconds }}
-          failureThreshold: {{ $root.Values.app.probes.liveness.failureThreshold }}
+            port: {{ include "app.resolvePort" (list (index $liveType "port") $root.Values.app.configData "liveness probe") }}
+          {{- else if eq $liveTypeName "httpget" }}
+          httpGet:
+            path: {{ $liveType.path }}
+            port: {{ include "app.resolvePort" (list (index $liveType "port") $root.Values.app.configData "liveness probe httpGet") }}
+          {{- else if eq $liveTypeName "exec" }}
+          exec:
+            command:
+              {{- range $cmd := $liveType.command }}
+              - {{ $cmd | quote }}
+              {{- end }}
+          {{- else }}
+          {{- fail (printf "probes.liveness.probeType %q must be one of tcpSocket/httpGet/exec" $liveTypeRaw) }}
+          {{- end }}
+          initialDelaySeconds: {{ $liveCfg.initialDelaySeconds }}
+          periodSeconds: {{ $liveCfg.periodSeconds }}
+          timeoutSeconds: {{ $liveCfg.timeoutSeconds }}
+          failureThreshold: {{ $liveCfg.failureThreshold }}
         # Readiness Probe
-        {{- $readyKey := $root.Values.app.probes.readiness.tcpSocket.port }}
-        {{- $readyPort := index $root.Values.app.ports $readyKey }}
+        {{- $readyCfg := $root.Values.app.probes.readiness -}}
+        {{- $readyTypeRaw := $readyCfg.probeType -}}
+        {{- if not $readyTypeRaw }}{{- fail "probes.readiness.probeType is required" }}{{- end }}
+        {{- $readyTypeName := lower $readyTypeRaw -}}
+        {{- $readyType := index $root.Values.app.probeTypes $readyTypeRaw -}}
+        {{- if not $readyType }}{{- fail (printf "probes.readiness.probeType %q not found under app.probeTypes" $readyTypeRaw) }}{{- end }}
         readinessProbe:
+          {{- if eq $readyTypeName "tcpsocket" }}
           tcpSocket:
-            port: {{ include "app.resolvePort" (list $readyPort.port $root.Values.app.configData "readiness probe") }}
-          initialDelaySeconds: {{ $root.Values.app.probes.readiness.initialDelaySeconds }}
-          periodSeconds: {{ $root.Values.app.probes.readiness.periodSeconds }}
-          timeoutSeconds: {{ $root.Values.app.probes.readiness.timeoutSeconds }}
-          failureThreshold: {{ $root.Values.app.probes.readiness.failureThreshold }}
+            port: {{ include "app.resolvePort" (list (index $readyType "port") $root.Values.app.configData "readiness probe") }}
+          {{- else if eq $readyTypeName "httpget" }}
+          httpGet:
+            path: {{ $readyType.path }}
+            port: {{ include "app.resolvePort" (list (index $readyType "port") $root.Values.app.configData "readiness probe httpGet") }}
+          {{- else if eq $readyTypeName "exec" }}
+          exec:
+            command:
+              {{- range $cmd := $readyType.command }}
+              - {{ $cmd | quote }}
+              {{- end }}
+          {{- else }}
+          {{- fail (printf "probes.readiness.probeType %q must be one of tcpSocket/httpGet/exec" $readyTypeRaw) }}
+          {{- end }}
+          initialDelaySeconds: {{ $readyCfg.initialDelaySeconds }}
+          periodSeconds: {{ $readyCfg.periodSeconds }}
+          timeoutSeconds: {{ $readyCfg.timeoutSeconds }}
+          failureThreshold: {{ $readyCfg.failureThreshold }}
         {{- $qos := $root.Values.app.resources.qos | default "Guaranteed" }}
         {{- if ne $qos "BestEffort" }}
         resources:
@@ -105,7 +142,7 @@ spec:
             mountPath: {{ $vcfg.mountPath }}
         {{- end }}
         {{- range $idx, $fcfg := $fmap }}
-          - name: '{{ include "app.fileResourceName" (list $root $fcfg $idx) }}'
+          - name: '{{ include "app.fileResourceName" (list $root $fcfg ) }}'
             {{- if $fcfg.subPath }}
             mountPath: '{{ printf "%s/%s" (trimSuffix "/" $fcfg.mountPath) $fcfg.subPath }}'
             subPath: '{{ $fcfg.subPath }}'
@@ -123,16 +160,16 @@ spec:
             claimName: '{{ default (printf "%s-%s" (trim (include "app.fullname" $root)) (trim (include "app.kebab" $vname))) $vcfg.claimName }}'
         {{- end }}
         {{- range $idx, $fcfg := $fmap }}
-        - name: '{{ include "app.fileResourceName" (list $root $fcfg $idx) }}'
+        - name: '{{ include "app.fileResourceName" (list $root $fcfg) }}'
           {{- if eq (lower (default "configmap" $fcfg.type)) "secret" }}
           secret:
-            secretName: '{{ include "app.fileResourceName" (list $root $fcfg $idx) }}'
+            secretName: '{{ include "app.fileResourceName" (list $root $fcfg) }}'
             items:
               - key: '{{ default "content" $fcfg.subPath }}'
                 path: '{{ default "content" $fcfg.subPath }}'
           {{- else }}
           configMap:
-            name: '{{ include "app.fileResourceName" (list $root $fcfg $idx) }}'
+            name: '{{ include "app.fileResourceName" (list $root $fcfg) }}'
             items:
               - key: '{{ default "content" $fcfg.subPath }}'
                 path: '{{ default "content" $fcfg.subPath }}'

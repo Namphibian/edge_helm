@@ -270,23 +270,91 @@
       ],
       "properties": {
         "sourcePort": {
-          "type": "string"
+          "$ref": "#/definitions/mapOrLiteralString"
         },
         "targetPort": {
-          "type": "string"
+          "$ref": "#/definitions/mapOrLiteralString"
         }
       },
       "additionalProperties": false
     },
-    "probe": {
+    "serviceDefRoutable": {
       "type": "object",
       "required": [
-        "tcpSocket",
-        "initialDelaySeconds",
-        "periodSeconds",
-        "timeoutSeconds",
-        "failureThreshold"
+        "ports"
       ],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "exposedRoute": {
+          "type": "boolean"
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ports": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/servicePortLink"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "serviceDefExternalName": {
+      "type": "object",
+      "required": [
+        "externalName"
+      ],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "externalName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "serviceDefHeadless": {
+      "type": "object",
+      "required": [
+        "ports"
+      ],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ports": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/servicePortLink"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "probeTypeDef": {
+      "type": "object",
       "properties": {
         "tcpSocket": {
           "type": "object",
@@ -295,10 +363,76 @@
           ],
           "properties": {
             "port": {
-              "type": "string"
+              "$ref": "#/definitions/mapOrLiteralInt"
             }
           },
           "additionalProperties": false
+        },
+        "httpGet": {
+          "type": "object",
+          "required": [
+            "path",
+            "port"
+          ],
+          "properties": {
+            "path": {
+              "type": "string",
+              "pattern": "^/.*"
+            },
+            "port": {
+              "$ref": "#/definitions/mapOrLiteralInt"
+            }
+          },
+          "additionalProperties": false
+        },
+        "exec": {
+          "type": "object",
+          "required": [
+            "command"
+          ],
+          "properties": {
+            "command": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "tcpSocket"
+          ]
+        },
+        {
+          "required": [
+            "httpGet"
+          ]
+        },
+        {
+          "required": [
+            "exec"
+          ]
+        }
+      ],
+      "additionalProperties": false
+    },
+    "probe": {
+      "type": "object",
+      "required": [
+        "probeType",
+        "initialDelaySeconds",
+        "periodSeconds",
+        "timeoutSeconds",
+        "failureThreshold"
+      ],
+      "properties": {
+        "probeType": {
+          "type": "string"
         },
         "initialDelaySeconds": {
           "type": "integer"
@@ -366,6 +500,8 @@
         "image",
         "ports",
         "services",
+        "probeTypes",
+        "probes",
         "env",
         "networkPolicy"
       ],
@@ -608,45 +744,114 @@
           }
         },
         "services": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": [
-              "name",
-              "type",
-              "ports"
-            ],
-            "properties": {
-              "name": {
-                "$ref": "#/definitions/dnsLabel"
-              },
-              "type": {
-                "type": "string",
-                "enum": [
-                  "ClusterIP",
-                  "NodePort",
-                  "LoadBalancer",
-                  "ExternalName"
-                ]
-              },
-              "description": {
-                "type": "string"
-              },
-              "annotations": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "ports": {
-                "type": "array",
-                "items": {
-                  "$ref": "#/definitions/servicePortLink"
-                }
+          "type": "object",
+          "properties": {
+            "clusterIp": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/definitions/serviceDefRoutable"
               }
             },
-            "additionalProperties": true
-          }
+            "nodePort": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/definitions/serviceDefRoutable"
+              }
+            },
+            "loadBalancer": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/definitions/serviceDefRoutable"
+              }
+            },
+            "externalName": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/definitions/serviceDefExternalName"
+              }
+            },
+            "headless": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/definitions/serviceDefHeadless"
+              }
+            },
+            "headles": {
+              "type": "object",
+              "additionalProperties": {
+                "$ref": "#/definitions/serviceDefHeadless"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "probeTypes": {
+          "type": "object",
+          "properties": {
+            "tcpSocket": {
+              "type": "object",
+              "required": [
+                "port"
+              ],
+              "properties": {
+                "port": {
+                  "$ref": "#/definitions/mapOrLiteralInt"
+                }
+              },
+              "additionalProperties": false
+            },
+            "httpGet": {
+              "type": "object",
+              "required": [
+                "path",
+                "port"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "pattern": "^/.*"
+                },
+                "port": {
+                  "$ref": "#/definitions/mapOrLiteralInt"
+                }
+              },
+              "additionalProperties": false
+            },
+            "exec": {
+              "type": "object",
+              "required": [
+                "command"
+              ],
+              "properties": {
+                "command": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "anyOf": [
+            {
+              "required": [
+                "tcpSocket"
+              ]
+            },
+            {
+              "required": [
+                "httpGet"
+              ]
+            },
+            {
+              "required": [
+                "exec"
+              ]
+            }
+          ],
+          "additionalProperties": false
         },
         "probes": {
           "type": "object",
@@ -767,15 +972,14 @@
             "$ref": "#/definitions/mapOrLiteralAny"
           }
         },
-        "files": {
+        "configFiles": {
           "type": "array",
           "items": {
             "type": "object",
             "required": [
               "name",
               "mountPath",
-              "type",
-              "data"
+              "type"
             ],
             "properties": {
               "name": {
@@ -796,10 +1000,22 @@
               },
               "data": {
                 "type": "string",
-                "minLength": 1
+                "minLength": 1,
+                "description": "Literal block scalar content. Mutually exclusive with 'transform'."
+              },
+              "transform": {
+                "type": "object",
+                "minProperties": 1,
+                "description": "Generates KEY=VALUE lines from configData references. Mutually exclusive with 'data'.",
+                "additionalProperties": {
+                  "$ref": "#/definitions/mapOrLiteralAny"
+                }
               }
             },
-            "additionalProperties": false
+            "additionalProperties": false,
+            "not": {
+              "required": ["data", "transform"]
+            }
           }
         }
       },

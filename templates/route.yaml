@@ -1,20 +1,46 @@
+{{- $root := . -}}
+{{- $services := $root.Values.app.services | default dict -}}
+{{- $routeGroups := list "clusterIp" "nodePort" "loadBalancer" -}}
+{{- range $gname := $routeGroups }}
+{{- $svcMap := index $services $gname | default dict -}}
+{{- range $svcName := (keys $svcMap | sortAlpha) }}
+{{- $svc := index $svcMap $svcName -}}
+{{- if $svc.exposedRoute }}
+{{- if not $svc.ports }}{{- fail (printf "route for service %s requires ports" $svcName) }}{{- end }}
+{{- $firstPort := index $svc.ports 0 -}}
+{{- $srcKey := $firstPort.sourcePort -}}
+{{- if kindIs "map" $firstPort.sourcePort -}}
+  {{- if hasKey $firstPort.sourcePort "configDataKey" -}}
+    {{- $srcKey = index $firstPort.sourcePort "configDataKey" -}}
+  {{- else -}}
+    {{- fail (printf "route service %s first sourcePort must be string key or map with configDataKey" $svcName) -}}
+  {{- end -}}
+{{- end -}}
+{{- if not (hasKey $root.Values.app.ports $srcKey) -}}
+  {{- fail (printf "route service %s sourcePort key %q not found in .Values.app.ports" $svcName $srcKey) -}}
+{{- end -}}
+{{- $srcDef := index $root.Values.app.ports $srcKey -}}
+---
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: {{ include "app.fullname" . }}
-  namespace: {{ $.Release.Namespace }}
+  name: {{ include "app.fullname" $root }}-{{ $svcName }}
+  namespace: {{ $root.Release.Namespace }}
   labels:
-    {{- include "app.labels" . | nindent 4 }}
-  {{- if and .Values.app.route .Values.app.route.annotations }}
+    {{- include "app.labels" $root | nindent 4 }}
+  {{- if and $root.Values.app.route $root.Values.app.route.annotations }}
   annotations:
-    {{- include "app.annotations" (list .Values.app.route.annotations .) | trim | nindent 4 }}
+    {{- include "app.annotations" (list $root.Values.app.route.annotations $root) | trim | nindent 4 }}
   {{- end }}
 spec:
   to:
     kind: Service
-    name: {{ include "app.fullname" . }}-svc
+    name: {{ include "app.fullname" $root }}-{{ $svcName }}
     weight: 100
   port:
-    targetPort: {{ include "app.resolvePort" (list .Values.app.ports.serverPort.port .Values.app.configData "route targetPort") }}
+    targetPort: {{ lower $srcDef.name }}
   tls:
     termination: edge
+{{ end }}
+{{ end }}
+{{ end }}

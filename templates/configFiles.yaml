@@ -1,0 +1,50 @@
+{{- $root := . -}}
+{{- $files := $root.Values.app.configFiles | default (list) -}}
+{{- range $idx, $f := $files }}
+{{- /* ---- validation ---- */}}
+{{- $type := lower (default "configmap" $f.type) -}}
+{{- if and (ne $type "configmap") (ne $type "secret") -}}
+{{- fail (printf "app.configFiles[%d].type must be configMap or secret, got %q" $idx $f.type) -}}
+{{- end -}}
+{{- if not $f.name -}}
+{{- fail (printf "app.configFiles[%d].name is required" $idx) -}}
+{{- end -}}
+{{- if not $f.mountPath -}}
+{{- fail (printf "app.configFiles[%d].mountPath is required" $idx) -}}
+{{- end -}}
+{{- $hasData := hasKey $f "data" -}}
+{{- $hasTransform := hasKey $f "transform" -}}
+{{- if and (not $hasData) (not $hasTransform) -}}
+{{- fail (printf "app.configFiles[%d] must have either 'data' or 'transform'" $idx) -}}
+{{- end -}}
+{{- if and $hasData $hasTransform -}}
+{{- fail (printf "app.configFiles[%d] cannot have both 'data' and 'transform'" $idx) -}}
+{{- end -}}
+{{- /* ---- resolve content ---- */}}
+{{- $content := "" -}}
+{{- if $hasTransform -}}
+{{- $content = include "app.transformContent" (list $f.transform $root.Values.app.configData (printf "configFiles[%d].transform" $idx)) -}}
+{{- else -}}
+{{- $content = trim $f.data -}}
+{{- end -}}
+{{- $name := include "app.fileResourceName" (list $root $f) -}}
+{{- $key := default "content" $f.subPath -}}
+---
+apiVersion: v1
+kind: {{ ternary "Secret" "ConfigMap" (eq $type "secret") }}
+metadata:
+  name: {{ $name }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "app.labels" $root | nindent 4 }}
+{{- if eq $type "secret" }}
+type: Opaque
+stringData:
+  {{ $key }}: |
+{{ $content | nindent 4 }}
+{{- else }}
+data:
+  {{ $key }}: |
+{{ $content | nindent 4 }}
+{{ end }}
+{{ end }}

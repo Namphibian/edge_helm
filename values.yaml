@@ -1,3 +1,4 @@
+
 # =============================================================================
 # EVS Helm Chart - values.yaml
 # =============================================================================
@@ -63,7 +64,7 @@ app:
   #   <key>:
   #     description: "<human-readable description>"
   #     value: <default value>
-  #     type: "int" | "string" | "list"
+  #     type: "int" | "string" | "list" | "url"
   #     joinChar: ","  # optional, only for list values rendered into env vars
   #
   # Other sections reference these entries via `configDataKey: <key>`.
@@ -80,6 +81,7 @@ app:
       description: "The port the server will listen on for HTTP/S requests"
       value: "8080"
       type: "int"
+
     # Port used for Prometheus metrics scraping
     prometheusPort:
       description: "Port used for Prometheus metrics scraping"
@@ -93,6 +95,7 @@ app:
       description: "The servlet context path for the application"
       value: "/evs"
       type: "string"
+
     # The application server version
     serverVersion:
       description: "The application server version"
@@ -105,41 +108,48 @@ app:
     serverTomcatMaxThreads:
       description: "Maximum number of Tomcat worker threads"
       value: "500"
-      type: "string"
+      type: "int"
+
     # Minimum number of Tomcat spare threads
     serverTomcatMinSpareThreads:
       description: "Minimum number of Tomcat spare threads"
       value: "200"
-      type: "string"
+      type: "int"
+
     # Maximum number of Tomcat connections
     serverTomcatMaxConnections:
       description: "Maximum number of Tomcat connections"
       value: "20000"
-      type: "string"
+      type: "int"
+
     # Maximum queue length for incoming connection requests
     serverTomcatAcceptCount:
       description: "Maximum queue length for incoming connection requests"
       value: "1000"
-      type: "string"
+      type: "int"
+
     # Tomcat connection timeout in milliseconds
     serverTomcatConnectionTimeout:
       description: "Tomcat connection timeout in milliseconds"
       value: "600000"
-      type: "string"
+      type: "int"
+
     # Tomcat keep-alive timeout in milliseconds
     serverTomcatKeepAliveTimeout:
       description: "Tomcat keep-alive timeout in milliseconds"
       value: "600000"
-      type: "string"
+      type: "int"
+
     # Maximum size of HTTP form post content in bytes
     serverTomcatMaxHttpFormPostSize:
       description: "Maximum size of HTTP form post content in bytes"
       value: "104857600"
-      type: "string"
+      type: "int"
 
     # -- OpenAPI authentication -------------------------------------------------
 
-    # List of OpenAPI user credentials and their org access
+    # List of OpenAPI user credentials and their org access.
+    # Rendered as JSON where needed (e.g. env/transform outputs).
     openapiUsers:
       description: "List of OpenAPI user credentials and their org access"
       value:
@@ -155,8 +165,10 @@ app:
     storageUploadMaxConcurrency:
       description: "Maximum number of concurrent uploads"
       value: "5"
-      type: "string"
+      type: "int"
+
     # List of file extensions that are forbidden from upload
+    # `joinChar` controls how this list is joined when rendered as env/transform text.
     storageForbiddenFileTypes:
       description: "List of file extensions that are forbidden from upload"
       value:
@@ -226,7 +238,10 @@ app:
 
     # -- Buyboost cloud service integration -------------------------------------
 
-    # Buyboost cloud service host URL for egress traffic
+    # Structured URL entry (`type: url`).
+    # Helpers can resolve:
+    # - full URL (`configDataKey: buyboostOpenapiHost`)
+    # - single field (`configDataKey: buyboostOpenapiHost.host`)
     buyboostOpenapiHost:
       description: "Buyboost cloud service host URL for egress traffic"
       value:
@@ -235,11 +250,13 @@ app:
         port: 8185
         path: "/buyboost"
       type: "url"
+
     # Buyboost OpenAPI access key
     buyboostOpenapiAk:
       description: "Buyboost OpenAPI access key"
       value: "test"
       type: "string"
+
     # Buyboost OpenAPI secret key
     buyboostOpenapiSk:
       description: "Buyboost OpenAPI secret key"
@@ -248,7 +265,6 @@ app:
 
     # -- HaiDP cloud service integration ----------------------------------------
 
-    # HaiDP cloud service host URL for egress traffic
     haidpOpenapiHost:
       description: "HaiDP cloud service host URL for egress traffic"
       value:
@@ -257,22 +273,22 @@ app:
         port: 9192
         path: "/api1"
       type: "url"
-    # HaiDP OpenAPI code identifier
+
     haidpOpenapiCode:
       description: "HaiDP OpenAPI code identifier"
       value: "edge"
       type: "string"
-    # HaiDP OpenAPI description
+
     haidpOpenapiDesc:
       description: "HaiDP OpenAPI description"
       value: "EVS"
       type: "string"
-    # HaiDP OpenAPI access key
+
     haidpOpenapiAk:
       description: "HaiDP OpenAPI access key"
       value: "IJpBSwnImQArnXRarbod"
       type: "string"
-    # HaiDP OpenAPI secret key
+
     haidpOpenapiSk:
       description: "HaiDP OpenAPI secret key"
       value: "vr1C8tELhFoqK3SccL3vRcdZDKWsudJSSu9vkob8"
@@ -280,12 +296,11 @@ app:
 
     # -- Scheduler settings -----------------------------------------------------
 
-    # Daily upload scheduler start time (local time, HH:mm)
     schedulerUploadStartTime:
       description: "Daily upload scheduler start time (local time, HH:mm)"
       value: "09:00"
       type: "string"
-    # Daily upload scheduler end time (local time, HH:mm)
+
     schedulerUploadEndTime:
       description: "Daily upload scheduler end time (local time, HH:mm)"
       value: "18:30"
@@ -295,55 +310,43 @@ app:
   # Container image
   # ---------------------------------------------------------------------------
   image:
-    # Container registry and image name
     repository: default-route-openshift-image-registry.apps-crc.testing/evs/evs
-    # Image tag / version to deploy
     tag: dev
-    # Pull policy: Always, IfNotPresent, or Never
     pullPolicy: IfNotPresent
-    # Registry credentials (list of secret names)
     imagePullSecrets:
       - name: xxx
 
   # ---------------------------------------------------------------------------
   # Deployment metadata
   # ---------------------------------------------------------------------------
-  # Optional annotations for the Deployment resource. Specify a list of
-  # annotationSet names (e.g. ["prometheus", "istio"]).
   deployment:
     annotations: [ ]
 
   # ---------------------------------------------------------------------------
   # Route metadata
   # ---------------------------------------------------------------------------
-  # Optional annotations for the OpenShift Route resource.
   route:
     annotations: [ ]
 
   # ---------------------------------------------------------------------------
   # Replica count
   # ---------------------------------------------------------------------------
-  # Can be a literal integer or a configDataKey reference.
-  # Example literal:  replicaCount: 3
   replicaCount: 1
-
+  serviceAccount:
+    create: true
+    annotations: {}
   # ---------------------------------------------------------------------------
   # Annotation sets — reusable annotation groups
   # ---------------------------------------------------------------------------
-  # Define named sets of annotations here, then reference them by name in
-  # services (or other resources). Annotation values support the configDataKey
-  # pattern, so port numbers etc. stay in sync with configData.
   annotationSets:
     prometheus:
       prometheus.io/scrape: "true"
       prometheus.io/port:
         configDataKey: prometheusPort
 
-    # AWS internal load balancer annotation
     awsInternal:
       service.beta.kubernetes.io/aws-load-balancer-internal: "true"
 
-    # Istio sidecar annotations
     istio:
       traffic.sidecar.istio.io/includeInboundPorts:
         configDataKey: "serverPort"
@@ -351,11 +354,6 @@ app:
   # ---------------------------------------------------------------------------
   # Resource requests / limits with QoS support
   # ---------------------------------------------------------------------------
-  # qos controls how the Deployment resources block is rendered:
-  #   Guaranteed  — requests are set equal to limits automatically (only
-  #                 configure limits; requests are ignored)
-  #   Burstable   — requests and limits are rendered independently
-  #   BestEffort  — no resources block is rendered at all
   resources:
     qos: "BestEffort"
     requests:
@@ -364,25 +362,17 @@ app:
     limits:
       memory: "8Gi"
       cpu: "1000"
+
   # ---------------------------------------------------------------------------
   # Persistent storage
   # ---------------------------------------------------------------------------
-  # Each key under `persistence` creates a PVC and a volume mount.
-  # Optional `backup` block enables Kasten K10 daily backups for the volume.
-  # Optional `annotations` list applies annotationSets to the PVC.
-  # Optional `backup.annotations` list applies annotationSets to the Kasten Policy CR.
   persistence:
     dataVolume:
       annotations: [ ]
-      # Kasten K10 backup configuration for this volume
       backup:
-        # Set to true to create a Kasten Policy CR and annotate the PVC
         enabled: true
-        # Cron-style frequency (e.g. "@daily", "@hourly", "0 */6 * * *")
         frequency: "@daily"
-        # Number of daily snapshots to retain
         retention: 7
-      # Kubernetes StorageClass to use
       storageClass: "crc-csi-hostpath-provisioner"
       accessMode: ReadWriteOnce
       size: 20Gi
@@ -392,9 +382,6 @@ app:
   # ---------------------------------------------------------------------------
   # Port definitions
   # ---------------------------------------------------------------------------
-  # Named port definitions. Each port's `port` value can be a literal or a
-  # configDataKey reference. These are referenced by name in services, probes,
-  # and network policies.
   ports:
     serverPort:
       port:
@@ -403,6 +390,7 @@ app:
       protocol: TCP
       description: "Port used by the application to run the server aka listening port."
       containerPort: "true"
+
     prometheusPort:
       port:
         configDataKey: prometheusPort
@@ -410,44 +398,113 @@ app:
       protocol: TCP
       description: "Used to configure the prometheus port for scraping"
 
+    dnsPort:
+      port: 53
+      name: "dns"
+      protocol: UDP
+      description: "DNS port for internal service discovery"
 
   # ---------------------------------------------------------------------------
-  # Services
+  # Services (map-based schema by service category)
   # ---------------------------------------------------------------------------
-  # List of Kubernetes Service resources to create. Each service references
-  # port definitions from `ports` above and annotation sets from `annotationSets`.
+  # Service groups:
+  # - clusterIp    -> renders type ClusterIP
+  # - nodePort     -> renders type NodePort
+  # - loadBalancer -> renders type LoadBalancer
+  # - externalName -> renders type ExternalName
+  # - headless     -> renders type ClusterIP + clusterIP: None
+  #
+  # Service object key (e.g. `api`) becomes the service name suffix.
+  # For routable service groups, `exposedRoute: true` allows route template
+  # to generate a Route for that service.
   services:
-    - name: api
-      type: ClusterIP
-      description: "This service hosts the API ports so that we can expose it to the world"
-      annotations:
-        - prometheus
-        - istio
-      ports:
-        - sourcePort: serverPort
-          targetPort: serverPort
-        - sourcePort: prometheusPort
-          targetPort: prometheusPort
+    clusterIp:
+      api:
+        description: "This service hosts the API ports so that we can expose it to the world"
+        exposedRoute: true
+        annotations:
+          - prometheus
+          - istio
+        ports:
+          - sourcePort:
+              configDataKey: serverPort
+            targetPort:
+              configDataKey: serverPort
+          - sourcePort:
+              configDataKey: prometheusPort
+            targetPort:
+              configDataKey: prometheusPort
 
+    nodePort:
+      dns:
+        description: "This service hosts the DNS ports so that we can expose it to the world"
+        exposedRoute: false
+        annotations:
+          - prometheus
+          - istio
+        ports:
+          - sourcePort:
+              configDataKey: dnsPort
+            targetPort:
+              configDataKey: dnsPort
+
+    loadBalancer:
+      prometheus:
+        description: "This service hosts the Prometheus ports so that we can expose it to the world"
+        exposedRoute: true
+        annotations:
+          - prometheus
+          - istio
+        ports:
+          - sourcePort:
+              configDataKey: prometheusPort
+            targetPort:
+              configDataKey: prometheusPort
+
+    externalName:
+      mysql-dev:
+        description: "This is an external name service that points to the mysql-dev service in the dev namespace"
+        externalName: "mysql-dev.dev.svc.cluster.local"
+
+    headless:
+      evs-storage:
+        description: "This is a headless service that points to the evs-storage service in the dev namespace"
+        ports:
+          - sourcePort:
+              configDataKey: serverPort
+            targetPort:
+              configDataKey: serverPort
 
   # ---------------------------------------------------------------------------
-  # Health probes
+  # Health probe types (shared probe definitions)
   # ---------------------------------------------------------------------------
-  # Liveness and readiness probes use TCP socket checks. The `port` field
-  # references a key in `app.ports` (not a raw port number).
+  # Define probe templates once, then choose one by name per liveness/readiness.
+  probeTypes:
+    httpGet:
+      path: /actuator/health
+      port:
+        configDataKey: serverPort
+
+    tcpSocket:
+      port:
+        configDataKey: serverPort
+
+    exec:
+      command: [ "/bin/sh", "-c", "curl -f http://localhost:8080/actuator/health || exit 1" ]
+
+  # ---------------------------------------------------------------------------
+  # Health probes (selectors + timing)
+  # ---------------------------------------------------------------------------
   probes:
     liveness:
-      tcpSocket:
-        # reference the serverPort above.
-        port: serverPort
+      probeType: tcpSocket
       initialDelaySeconds: 60
       periodSeconds: 10
       timeoutSeconds: 5
       failureThreshold: 3
+
     readiness:
-      tcpSocket:
-        # reference the serverPort above.
-        port: serverPort
+      probeType: httpGet
       initialDelaySeconds: 30
       periodSeconds: 10
       timeoutSeconds: 5
@@ -456,23 +513,16 @@ app:
   # ---------------------------------------------------------------------------
   # Network policies
   # ---------------------------------------------------------------------------
-  # Controls ingress and egress traffic at the Kubernetes NetworkPolicy level.
-  # Ingress ports reference keys from `app.ports`.
-  # Egress hosts are specified by IP and port.
-  # Both ingress and egress sections support an optional `annotations` list
-  # referencing annotationSet names.
   networkPolicy:
     ingress:
-      # Allow traffic from the route/service to the application pods only
       allowedSources:
         - type: podSelector
           matchLabels:
             app.kubernetes.io/name: evs
-      # Only allow traffic on the server port
       ports:
         - serverPort
+
     egress:
-      # Allow egress to buyboost and haidp cloud services
       allowedHosts:
         - name: buyboost
           ip:
@@ -488,15 +538,9 @@ app:
   # ---------------------------------------------------------------------------
   # Environment variables
   # ---------------------------------------------------------------------------
-  # Each entry becomes a container env var in the Deployment. Values can be:
-  #   - A literal string/int:       MY_VAR: "hello"
-  #   - A configDataKey reference:  MY_VAR: { configDataKey: someKey }
-  #
-  # When using configDataKey, the matching configData description is rendered
-  # as a YAML comment above the env var in the template output.
-  # ---------------------------------------------------------------------------
   env:
-    # -- Server core settings
+    LOGGING_CONFIG: "/app/logback-spring.xml"
+
     SERVER_PORT:
       configDataKey: serverPort
     SERVER_SERVLET_CONTEXT_PATH:
@@ -504,7 +548,6 @@ app:
     SERVER_VERSION:
       configDataKey: serverVersion
 
-    # -- Tomcat tuning
     SERVER_TOMCAT_MAX_THREADS:
       configDataKey: serverTomcatMaxThreads
     SERVER_TOMCAT_MIN_SPARE_THREADS:
@@ -520,11 +563,9 @@ app:
     SERVER_TOMCAT_MAX_HTTP_FORM_POST_SIZE:
       configDataKey: serverTomcatMaxHttpFormPostSize
 
-    # -- OpenAPI credentials
     OPENAPI_USERS:
       configDataKey: openapiUsers
 
-    # -- Storage and scheduler
     STORAGE_UPLOAD_MAX_CONCURRENCY:
       configDataKey: storageUploadMaxConcurrency
     STORAGE_FORBIDDEN_FILE_TYPES:
@@ -534,7 +575,6 @@ app:
     SCHEDULER_UPLOAD_END_TIME:
       configDataKey: schedulerUploadEndTime
 
-    # -- Buyboost cloud service
     BUYBOOST_OPENAPI_HOST:
       configDataKey: buyboostOpenapiHost
     BUYBOOST_OPENAPI_AK:
@@ -542,7 +582,6 @@ app:
     BUYBOOST_OPENAPI_SK:
       configDataKey: buyboostOpenapiSk
 
-    # -- HaiDP cloud service
     HAIDP_OPENAPI_HOST:
       configDataKey: haidpOpenapiHost
     HAIDP_OPENAPI_CODE:
@@ -554,15 +593,37 @@ app:
     HAIDP_OPENAPI_SK:
       configDataKey: haidpOpenapiSk
 
-  files:
-    - name: "logback-settings"
-      mountPath: "/app/config/"
+  # ---------------------------------------------------------------------------
+  # Config files mounted into the pod
+  # ---------------------------------------------------------------------------
+  # Each entry creates a ConfigMap/Secret + mount.
+  # Use `data` for literal block content, or `transform` to generate
+  # KEY=VALUE lines from configData references.
+  configFiles:
+    - name: "logback-settings-override"
+      mountPath: "/app"
       subPath: "logback-spring.xml"
       type: "configMap"
       data: |
-        <some>
-          <config></config>
-        </some>
+        <configuration>
+
+          <!-- Unified log pattern -->
+          <property name="LOG_PATTERN"
+                    value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger - %msg%n"/>
+
+          <!-- Console only -->
+          <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+            <encoder>
+              <pattern>${LOG_PATTERN}</pattern>
+            </encoder>
+          </appender>
+
+          <!-- Root logger -->
+          <root level="INFO">
+            <appender-ref ref="STDOUT"/>
+          </root>
+
+        </configuration>
 
     - name: "logback-secrets"
       mountPath: "/app/config/"
@@ -572,3 +633,21 @@ app:
         <some>
           <config></config>
         </some>
+
+    - name: "application-properties-override"
+      mountPath: "/app"
+      subPath: "logback-secrets.xml"
+      type: "secret"
+      transform:
+        server.port:
+          configDataKey: serverPort
+        server.servlet.context-path:
+          configDataKey: serverServletContextPath
+        server.version:
+          configDataKey: serverVersion
+        storage.forbidden.file.types:
+          configDataKey: storageForbiddenFileTypes
+        openapi.users:
+          configDataKey: openapiUsers
+        buyboost.openapi.host:
+          configDataKey: buyboostOpenapiHost

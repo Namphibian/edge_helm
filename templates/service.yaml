@@ -1,10 +1,22 @@
 {{- $root := . -}}
-{{- range $svc := $root.Values.app.services }}
+{{- $services := $root.Values.app.services | default dict -}}
+{{- $groups := list
+      (dict "valuesKey" "clusterIp"    "serviceType" "ClusterIP"    "headless" false "external" false)
+      (dict "valuesKey" "nodePort"     "serviceType" "NodePort"     "headless" false "external" false)
+      (dict "valuesKey" "loadBalancer" "serviceType" "LoadBalancer" "headless" false "external" false)
+      (dict "valuesKey" "externalName" "serviceType" "ExternalName" "headless" false "external" true)
+      (dict "valuesKey" "headless"     "serviceType" "ClusterIP"    "headless" true  "external" false)
+      (dict "valuesKey" "headles"      "serviceType" "ClusterIP"    "headless" true  "external" false)
+  -}}
+{{- range $g := $groups }}
+{{- $svcMap := index $services (index $g "valuesKey") | default dict -}}
+{{- range $svcName := (keys $svcMap | sortAlpha) }}
+{{- $svc := index $svcMap $svcName -}}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "app.fullname" $root }}-{{ $svc.name }}
+  name: {{ include "app.fullname" $root }}-{{ $svcName }}
   namespace: {{ $root.Release.Namespace }}
   labels:
     {{- include "app.labels" $root | nindent 4 }}
@@ -13,16 +25,49 @@ metadata:
     {{- include "app.annotations" (list $svc.annotations $root) | trim | nindent 4 }}
   {{- end }}
 spec:
-  type: {{ $svc.type | default "ClusterIP" }}
+  type: {{ index $g "serviceType" }}
+  {{- if index $g "headless" }}
+  clusterIP: None
+  {{- end }}
+  {{- if index $g "external" }}
+  externalName: {{ $svc.externalName }}
+  {{- else }}
   selector:
     {{- include "app.selectorLabels" $root | nindent 4 }}
+  {{- if not $svc.ports }}
+  {{- fail (printf "service %s must define ports" $svcName) }}
+  {{- end }}
   ports:
     {{- range $sp := $svc.ports }}
-    {{- $srcDef := index $root.Values.app.ports $sp.sourcePort }}
-    {{- $tgtDef := index $root.Values.app.ports $sp.targetPort }}
+    {{- $srcKey := $sp.sourcePort }}
+    {{- if kindIs "map" $sp.sourcePort -}}
+      {{- if hasKey $sp.sourcePort "configDataKey" -}}
+        {{- $srcKey = index $sp.sourcePort "configDataKey" -}}
+      {{- else -}}
+        {{- fail (printf "service %s sourcePort must be string key or map with configDataKey" $svcName) -}}
+      {{- end -}}
+    {{- end -}}
+    {{- $tgtKey := $sp.targetPort }}
+    {{- if kindIs "map" $sp.targetPort -}}
+      {{- if hasKey $sp.targetPort "configDataKey" -}}
+        {{- $tgtKey = index $sp.targetPort "configDataKey" -}}
+      {{- else -}}
+        {{- fail (printf "service %s targetPort must be string key or map with configDataKey" $svcName) -}}
+      {{- end -}}
+    {{- end -}}
+    {{- if not (hasKey $root.Values.app.ports $srcKey) -}}
+      {{- fail (printf "service %s sourcePort key %q not found in .Values.app.ports" $svcName $srcKey) -}}
+    {{- end -}}
+    {{- if not (hasKey $root.Values.app.ports $tgtKey) -}}
+      {{- fail (printf "service %s targetPort key %q not found in .Values.app.ports" $svcName $tgtKey) -}}
+    {{- end -}}
+    {{- $srcDef := index $root.Values.app.ports $srcKey }}
+    {{- $tgtDef := index $root.Values.app.ports $tgtKey }}
     - name: {{ lower $srcDef.name }}
-      port: {{ include "app.resolvePort" (list $srcDef.port $root.Values.app.configData (printf "service %s source port %s" $svc.name $sp.sourcePort)) }}
-      targetPort: {{ include "app.resolvePort" (list $tgtDef.port $root.Values.app.configData (printf "service %s target port %s" $svc.name $sp.targetPort)) }}
+      port: {{ include "app.resolvePort" (list $srcDef.port $root.Values.app.configData (printf "service %s source port %s" $svcName $srcKey)) }}
+      targetPort: {{ include "app.resolvePort" (list $tgtDef.port $root.Values.app.configData (printf "service %s target port %s" $svcName $tgtKey)) }}
       protocol: {{ $srcDef.protocol | default "TCP" }}
     {{- end }}
-{{- end }}
+  {{ end }}
+{{ end }}
+{{ end }}
