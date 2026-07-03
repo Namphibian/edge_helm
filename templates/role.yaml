@@ -1,0 +1,13 @@
+{{- $root := . -}}
+kind: Role
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: {{ include "app.fullname" $root }}-min-ro-role
+  namespace: {{ $root.Release.Namespace }}
+rules:
+- apiGroups: [""]
+  resources: ["pods", "services", "endpoints", "configmaps", "secrets"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["get", "list"]

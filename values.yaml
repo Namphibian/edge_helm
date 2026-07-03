@@ -334,7 +334,7 @@ app:
   replicaCount: 1
   serviceAccount:
     create: true
-    annotations: {}
+    annotations: []
   # ---------------------------------------------------------------------------
   # Annotation sets — reusable annotation groups
   # ---------------------------------------------------------------------------
