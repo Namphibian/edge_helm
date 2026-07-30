@@ -308,19 +308,16 @@ app.resolvePort — resolve a port value and guarantee numeric string output.
 
 Parameters (list): [ $portCfg, $configData, $contextName ]
   - $portCfg      : the port value — either a literal number/string or a map
-                    containing "configDataKey" pointing to an int-type entry
+                    containing "portDefinitionKey" pointing to a port value
   - $configData   : $.Values.app.configData
   - $contextName  : caller label used in fail() messages
 
 Returns: the port as a numeric string (e.g. "8080").
 
-Both the configDataKey and literal branches are stringified to $raw via
+Both the portDefinitionKey and literal branches are stringified to $raw via
 printf "%v", then validated with regex "^[1-9][0-9]*$" before int()
-conversion.  This prevents silent coercion of non-numeric values to 0
-and rejects strings that look non-numeric (e.g. "http-tomcat", "0", "8.0").
-
-Note: uses a direct lookup rather than app.resolveConfigDataEntry because
-it must guarantee int conversion, which is incompatible with JSON round-trip.
+conversion. This prevents silent coercion of non-numeric values to 0 and
+rejects strings that look non-numeric (e.g. "http-tomcat", "0", "8.0").
 */ -}}
 {{- define "app.resolvePort" -}}
   {{- $portCfg     := index . 0 -}}
@@ -328,15 +325,22 @@ it must guarantee int conversion, which is incompatible with JSON round-trip.
   {{- $contextName := index . 2 -}}
   {{- $raw := "" -}}
   {{- if kindIs "map" $portCfg -}}
-    {{- $cfgKey := index $portCfg "configDataKey" -}}
-    {{- if not (hasKey $configData $cfgKey) -}}
-      {{- fail (printf "%s: configDataKey %q not found in .Values.app.configData" $contextName $cfgKey) -}}
+    {{- if not (hasKey $portCfg "portDefinitionKey") -}}
+      {{- fail (printf "%s: port map must contain portDefinitionKey" $contextName) -}}
     {{- end -}}
-    {{- $entry := index $configData $cfgKey -}}
-    {{- if or (not (hasKey $entry "value")) (empty (index $entry "value")) -}}
-      {{- fail (printf "%s: configData entry %q has no 'value' field or it is empty" $contextName $cfgKey) -}}
+    {{- $ref := index $portCfg "portDefinitionKey" -}}
+    {{- $r := include "app.resolveConfigDataEntry" (list $ref $configData $contextName) | fromJson -}}
+    {{- if $r.subField -}}
+      {{- if not (kindIs "map" $r.value) -}}
+        {{- fail (printf "%s: portDefinitionKey %q value is not a map; cannot access sub-field %q" $contextName $r.cfgKey $r.subField) -}}
+      {{- end -}}
+      {{- if not (hasKey $r.value $r.subField) -}}
+        {{- fail (printf "%s: configData entry %q has no sub-field %q" $contextName $r.cfgKey $r.subField) -}}
+      {{- end -}}
+      {{- $raw = printf "%v" (index $r.value $r.subField) -}}
+    {{- else -}}
+      {{- $raw = printf "%v" $r.value -}}
     {{- end -}}
-    {{- $raw = printf "%v" (index $entry "value") -}}
   {{- else -}}
     {{- $raw = printf "%v" $portCfg -}}
   {{- end -}}

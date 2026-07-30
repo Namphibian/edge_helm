@@ -10,10 +10,10 @@
 {{- $firstPort := index $svc.ports 0 -}}
 {{- $srcKey := $firstPort.sourcePort -}}
 {{- if kindIs "map" $firstPort.sourcePort -}}
-  {{- if hasKey $firstPort.sourcePort "configDataKey" -}}
-    {{- $srcKey = index $firstPort.sourcePort "configDataKey" -}}
+  {{- if hasKey $firstPort.sourcePort "portDefinitionKey" -}}
+    {{- $srcKey = index $firstPort.sourcePort "portDefinitionKey" -}}
   {{- else -}}
-    {{- fail (printf "route service %s first sourcePort must be string key or map with configDataKey" $svcName) -}}
+    {{- fail (printf "route service %s first sourcePort must be string key or map with portDefinitionKey" $svcName) -}}
   {{- end -}}
 {{- end -}}
 {{- if not (hasKey $root.Values.app.ports $srcKey) -}}

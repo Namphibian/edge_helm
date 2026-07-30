@@ -1,4 +1,3 @@
-
 # =============================================================================
 # EVS Helm Chart - values.yaml
 # =============================================================================
@@ -334,7 +333,7 @@ app:
   replicaCount: 1
   serviceAccount:
     create: true
-    annotations: []
+    annotations: [ ]
   # ---------------------------------------------------------------------------
   # Annotation sets — reusable annotation groups
   # ---------------------------------------------------------------------------
@@ -355,7 +354,7 @@ app:
   # Resource requests / limits with QoS support
   # ---------------------------------------------------------------------------
   resources:
-    qos: "BestEffort"
+    qos: "Guaranteed"
     requests:
       memory: "6Gi"
       cpu: "750"
@@ -385,15 +384,15 @@ app:
   ports:
     serverPort:
       port:
-        configDataKey: serverPort
+        portDefinitionKey: serverPort
       name: "http-tomcat"
-      protocol: TCP
+      protocol: UDP
       description: "Port used by the application to run the server aka listening port."
       containerPort: "true"
 
     prometheusPort:
       port:
-        configDataKey: prometheusPort
+        portDefinitionKey: prometheusPort
       name: "tcp-prom"
       protocol: TCP
       description: "Used to configure the prometheus port for scraping"
@@ -427,13 +426,13 @@ app:
           - istio
         ports:
           - sourcePort:
-              configDataKey: serverPort
+              portDefinitionKey: serverPort
             targetPort:
-              configDataKey: serverPort
+              portDefinitionKey: serverPort
           - sourcePort:
-              configDataKey: prometheusPort
+              portDefinitionKey: prometheusPort
             targetPort:
-              configDataKey: prometheusPort
+              portDefinitionKey: prometheusPort
 
     nodePort:
       dns:
@@ -444,9 +443,9 @@ app:
           - istio
         ports:
           - sourcePort:
-              configDataKey: dnsPort
+              portDefinitionKey: dnsPort
             targetPort:
-              configDataKey: dnsPort
+              portDefinitionKey: dnsPort
 
     loadBalancer:
       prometheus:
@@ -457,9 +456,9 @@ app:
           - istio
         ports:
           - sourcePort:
-              configDataKey: prometheusPort
+              portDefinitionKey: prometheusPort
             targetPort:
-              configDataKey: prometheusPort
+              portDefinitionKey: prometheusPort
 
     externalName:
       mysql-dev:
@@ -471,9 +470,9 @@ app:
         description: "This is a headless service that points to the evs-storage service in the dev namespace"
         ports:
           - sourcePort:
-              configDataKey: serverPort
+              portDefinitionKey: serverPort
             targetPort:
-              configDataKey: serverPort
+              portDefinitionKey: serverPort
 
   # ---------------------------------------------------------------------------
   # Health probe types (shared probe definitions)
@@ -483,11 +482,11 @@ app:
     httpGet:
       path: /actuator/health
       port:
-        configDataKey: serverPort
+        portDefinitionKey: serverPort
 
     tcpSocket:
       port:
-        configDataKey: serverPort
+        portDefinitionKey: serverPort
 
     exec:
       command: [ "/bin/sh", "-c", "curl -f http://localhost:8080/actuator/health || exit 1" ]
@@ -528,12 +527,12 @@ app:
           ip:
             configDataKey: buyboostOpenapiHost.host
           port:
-            configDataKey: buyboostOpenapiHost.port
+            portDefinitionKey: buyboostOpenapiHost.port
         - name: haidp
           ip:
             configDataKey: haidpOpenapiHost.host
           port:
-            configDataKey: haidpOpenapiHost.port
+            portDefinitionKey: haidpOpenapiHost.port
 
   # ---------------------------------------------------------------------------
   # Environment variables
@@ -600,8 +599,17 @@ app:
   # Use `data` for literal block content, or `transform` to generate
   # KEY=VALUE lines from configData references.
   configFiles:
+    - name: "jul-logging-override"
+      mountPath: "/app/config"
+      subPath: "logging.properties"
+      type: configMap
+      data: |
+        handlers=java.util.logging.ConsoleHandler.level=INFO
+        java.util.logging.ConsoleHandler.level=INFO
+        java.util.logging.ConsoleHandler.formatter=java.util.logging.SimpleFormatter
+        java.util.logging.SimpleFormatter.format=%1$tF %1$tT.%1$tL %-7s [%7$s] %2$s - %5$s%n
     - name: "logback-settings-override"
-      mountPath: "/app"
+      mountPath: "/app/etc"
       subPath: "logback-spring.xml"
       type: "configMap"
       data: |
@@ -625,29 +633,85 @@ app:
 
         </configuration>
 
-    - name: "logback-secrets"
-      mountPath: "/app/config/"
-      subPath: "logback-secrets.xml"
-      type: "secret"
-      data: |
-        <some>
-          <config></config>
-        </some>
-
     - name: "application-properties-override"
-      mountPath: "/app"
-      subPath: "logback-secrets.xml"
-      type: "secret"
+      mountPath: "/app/config"
+      subPath: "application.properties"
+      type: "configMap"
       transform:
         server.port:
           configDataKey: serverPort
-        server.servlet.context-path:
+        server.servlet.context.path:
           configDataKey: serverServletContextPath
         server.version:
           configDataKey: serverVersion
-        storage.forbidden.file.types:
-          configDataKey: storageForbiddenFileTypes
+        server.tomcat.max-threads:
+          configDataKey: serverTomcatMaxThreads
+        server.tomcat.min-spare-threads:
+          configDataKey: serverTomcatMinSpareThreads
+        server.tomcat.max-connections:
+          configDataKey: serverTomcatMaxConnections
+        server.tomcat.accept-count:
+          configDataKey: serverTomcatAcceptCount
+        server.tomcat.connection-timeout:
+          configDataKey: serverTomcatConnectionTimeout
+        server.tomcat.keep-alive-timeout:
+          configDataKey: serverTomcatKeepAliveTimeout
+        server.tomcat.max-http-form-post-size:
+          configDataKey: serverTomcatMaxHttpFormPostSize
         openapi.users:
           configDataKey: openapiUsers
+        storage.upload.max.concurrency:
+          configDataKey: storageUploadMaxConcurrency
+        storage.forbidden.file.types:
+          configDataKey: storageForbiddenFileTypes
+        scheduler.upload.start.time:
+          configDataKey: schedulerUploadStartTime
+        scheduler.upload.end.time:
+          configDataKey: schedulerUploadEndTime
         buyboost.openapi.host:
           configDataKey: buyboostOpenapiHost
+        haidp.openapi.host:
+          configDataKey: haidpOpenapiHost
+        haidp.openapi.code:
+          configDataKey: haidpOpenapiCode
+        haidp.openapi.desc:
+          configDataKey: haidpOpenapiDesc
+
+    - name: "application-secrets-override"
+      mountPath: "/app/config/secrets"
+      subPath: "application.properties"
+      type: "secret"
+      transform:
+        buyboost.openapi.ak:
+          configDataKey: buyboostOpenapiAk
+        buyboost.openapi.sk:
+          configDataKey: buyboostOpenapiSk
+        haidp.openapi.ak:
+          configDataKey: haidpOpenapiAk
+        haidp.openapi.sk:
+          configDataKey: haidpOpenapiSk
+
+  secretStores:
+    aksVault:
+      provider:
+        azurekv:
+          tenantId: "your-tenant-id"
+          clientId: "your-client-id"
+          clientSecret:
+            valueFrom:
+              secretKeyRef:
+                name: azure-client-secret
+                key: client-secret
+          vaultUrl: "https://your-vault-name.vault.azure.net/"
+  externalSecrets:
+    buyboostSecrets: #name of the external secret
+      refreshInterval: 1h
+      secretStoreRef:
+        name: secret-store-name # this is the name of the secret store that was created by the admins.
+      target:
+        name: aksVault
+        creationPolicy: Owner
+      data:
+        - secretKey: DB_PASSWORD
+          remoteRef:
+            key: prod/db/password

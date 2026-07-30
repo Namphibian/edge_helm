@@ -140,7 +140,7 @@ app:
           ip:
             configDataKey: vendorOpenapiHost.host
           port:
-            configDataKey: vendorOpenapiHost.port
+            portDefinitionKey: vendorOpenapiHost.port
 
   files:
     - name: "vendor-a-app-config"
@@ -284,13 +284,13 @@ resources:
 
 ## Services and Ports
 
-Ports are defined in `app.ports` and referenced by name throughout the chart. Each port can use a `configDataKey` or a literal value:
+Ports are defined in `app.ports` and referenced by name throughout the chart. Each port can use a `portDefinitionKey` or a literal value:
 
 ```yaml
 ports:
   serverPort:
     port:
-      configDataKey: serverPort
+      portDefinitionKey: serverPort
     name: http_tomcat
     protocol: TCP
 ```

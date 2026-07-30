@@ -58,6 +58,6 @@ spec:
             cidr: {{ include "app.configValue" (list .ip $root.Values.app.configData (printf "networkpolicy egress %s ip" .name)) }}/32
       ports:
         - protocol: TCP
-          port: {{ include "app.configValue" (list .port $root.Values.app.configData (printf "networkpolicy egress %s port" .name)) }}
+          port: {{ include "app.resolvePort" (list .port $root.Values.app.configData (printf "networkpolicy egress %s port" .name)) }}
     {{- end }}
 {{- end }}

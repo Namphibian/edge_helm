@@ -41,18 +41,18 @@ spec:
     {{- range $sp := $svc.ports }}
     {{- $srcKey := $sp.sourcePort }}
     {{- if kindIs "map" $sp.sourcePort -}}
-      {{- if hasKey $sp.sourcePort "configDataKey" -}}
-        {{- $srcKey = index $sp.sourcePort "configDataKey" -}}
+      {{- if hasKey $sp.sourcePort "portDefinitionKey" -}}
+        {{- $srcKey = index $sp.sourcePort "portDefinitionKey" -}}
       {{- else -}}
-        {{- fail (printf "service %s sourcePort must be string key or map with configDataKey" $svcName) -}}
+        {{- fail (printf "service %s sourcePort must be string key or map with portDefinitionKey" $svcName) -}}
       {{- end -}}
     {{- end -}}
     {{- $tgtKey := $sp.targetPort }}
     {{- if kindIs "map" $sp.targetPort -}}
-      {{- if hasKey $sp.targetPort "configDataKey" -}}
-        {{- $tgtKey = index $sp.targetPort "configDataKey" -}}
+      {{- if hasKey $sp.targetPort "portDefinitionKey" -}}
+        {{- $tgtKey = index $sp.targetPort "portDefinitionKey" -}}
       {{- else -}}
-        {{- fail (printf "service %s targetPort must be string key or map with configDataKey" $svcName) -}}
+        {{- fail (printf "service %s targetPort must be string key or map with portDefinitionKey" $svcName) -}}
       {{- end -}}
     {{- end -}}
     {{- if not (hasKey $root.Values.app.ports $srcKey) -}}

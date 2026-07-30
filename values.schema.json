@@ -23,6 +23,35 @@
       },
       "additionalProperties": false
     },
+    "portDefinitionRef": {
+      "type": "object",
+      "required": [
+        "portDefinitionKey"
+      ],
+      "properties": {
+        "portDefinitionKey": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*(\\.[A-Za-z_][A-Za-z0-9_]*)*$",
+          "description": "Supports dotted sub-fields like buyboostOpenapiHost.port"
+        }
+      },
+      "additionalProperties": false
+    },
+    "portLookupRef": {
+      "type": "object",
+      "required": [
+        "portDefinitionKey"
+      ],
+      "properties": {
+        "portDefinitionKey": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*$"
+        }
+      },
+      "additionalProperties": false
+    },
     "dnsLabel": {
       "type": "string",
       "pattern": "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
@@ -85,7 +114,31 @@
           "$ref": "#/definitions/portNumber"
         },
         {
-          "$ref": "#/definitions/configDataRef"
+          "$ref": "#/definitions/portDefinitionRef"
+        }
+      ]
+    },
+    "mapOrLiteralPortInt": {
+      "oneOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        {
+          "$ref": "#/definitions/portDefinitionRef"
+        }
+      ]
+    },
+    "mapOrLiteralPortLookup": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/definitions/portLookupRef"
         }
       ]
     },
@@ -270,10 +323,10 @@
       ],
       "properties": {
         "sourcePort": {
-          "$ref": "#/definitions/mapOrLiteralString"
+          "$ref": "#/definitions/mapOrLiteralPortLookup"
         },
         "targetPort": {
-          "$ref": "#/definitions/mapOrLiteralString"
+          "$ref": "#/definitions/mapOrLiteralPortLookup"
         }
       },
       "additionalProperties": false
@@ -363,7 +416,7 @@
           ],
           "properties": {
             "port": {
-              "$ref": "#/definitions/mapOrLiteralInt"
+              "$ref": "#/definitions/mapOrLiteralPortInt"
             }
           },
           "additionalProperties": false
@@ -380,7 +433,7 @@
               "pattern": "^/.*"
             },
             "port": {
-              "$ref": "#/definitions/mapOrLiteralInt"
+              "$ref": "#/definitions/mapOrLiteralPortInt"
             }
           },
           "additionalProperties": false
@@ -713,7 +766,7 @@
             ],
             "properties": {
               "port": {
-                "$ref": "#/definitions/mapOrLiteralInt"
+                "$ref": "#/definitions/mapOrLiteralPortInt"
               },
               "name": {
                 "type": "string"
@@ -795,7 +848,7 @@
               ],
               "properties": {
                 "port": {
-                  "$ref": "#/definitions/mapOrLiteralInt"
+                  "$ref": "#/definitions/mapOrLiteralPortInt"
                 }
               },
               "additionalProperties": false
@@ -812,7 +865,7 @@
                   "pattern": "^/.*"
                 },
                 "port": {
-                  "$ref": "#/definitions/mapOrLiteralInt"
+                  "$ref": "#/definitions/mapOrLiteralPortInt"
                 }
               },
               "additionalProperties": false
