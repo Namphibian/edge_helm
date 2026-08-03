@@ -1,11 +1,24 @@
 {{- $root := . -}}
-{{- $services := $root.Values.app.services | default dict -}}
+{{- $appName := first (keys $root.Values.app | sortAlpha) -}}
+{{- $app := index $root.Values.app $appName -}}
+{{- $services := $root.Values.services | default dict -}}
 {{- $routeGroups := list "clusterIp" "nodePort" "loadBalancer" -}}
+{{- $hasExposedRoute := false -}}
 {{- range $gname := $routeGroups }}
 {{- $svcMap := index $services $gname | default dict -}}
 {{- range $svcName := (keys $svcMap | sortAlpha) }}
 {{- $svc := index $svcMap $svcName -}}
-{{- if $svc.exposedRoute }}
+{{- if and (hasKey $svc "exposedRoute") (eq $svc.exposedRoute true) -}}
+{{- $hasExposedRoute = true -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- if $hasExposedRoute }}
+{{- range $gname := $routeGroups }}
+{{- $svcMap := index $services $gname | default dict -}}
+{{- range $svcName := (keys $svcMap | sortAlpha) }}
+{{- $svc := index $svcMap $svcName -}}
+{{- if and (hasKey $svc "exposedRoute") (eq $svc.exposedRoute true) }}
 {{- if not $svc.ports }}{{- fail (printf "route for service %s requires ports" $svcName) }}{{- end }}
 {{- $firstPort := index $svc.ports 0 -}}
 {{- $srcKey := $firstPort.sourcePort -}}
@@ -16,10 +29,10 @@
     {{- fail (printf "route service %s first sourcePort must be string key or map with portDefinitionKey" $svcName) -}}
   {{- end -}}
 {{- end -}}
-{{- if not (hasKey $root.Values.app.ports $srcKey) -}}
-  {{- fail (printf "route service %s sourcePort key %q not found in .Values.app.ports" $svcName $srcKey) -}}
+{{- if not (hasKey $root.Values.ports $srcKey) -}}
+  {{- fail (printf "route service %s sourcePort key %q not found in .Values.ports" $svcName $srcKey) -}}
 {{- end -}}
-{{- $srcDef := index $root.Values.app.ports $srcKey -}}
+{{- $srcDef := index $root.Values.ports $srcKey -}}
 ---
 apiVersion: route.openshift.io/v1
 kind: Route
@@ -28,9 +41,9 @@ metadata:
   namespace: {{ $root.Release.Namespace }}
   labels:
     {{- include "app.labels" $root | nindent 4 }}
-  {{- if and $root.Values.app.route $root.Values.app.route.annotations }}
+  {{- if and $app.route $app.route.annotations }}
   annotations:
-    {{- include "app.annotations" (list $root.Values.app.route.annotations $root) | trim | nindent 4 }}
+    {{- include "app.annotations" (list $app.route.annotations $root $app.annotationSets) | trim | nindent 4 }}
   {{- end }}
 spec:
   to:
@@ -44,3 +57,4 @@ spec:
 {{ end }}
 {{ end }}
 {{ end }}
+{{- end }}

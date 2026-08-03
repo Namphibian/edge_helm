@@ -1,5 +1,5 @@
 {{- $root := . -}}
-{{- $services := $root.Values.app.services | default dict -}}
+{{- $services := $root.Values.services | default dict -}}
 {{- $groups := list
       (dict "valuesKey" "clusterIp"    "serviceType" "ClusterIP"    "headless" false "external" false)
       (dict "valuesKey" "nodePort"     "serviceType" "NodePort"     "headless" false "external" false)
@@ -55,17 +55,17 @@ spec:
         {{- fail (printf "service %s targetPort must be string key or map with portDefinitionKey" $svcName) -}}
       {{- end -}}
     {{- end -}}
-    {{- if not (hasKey $root.Values.app.ports $srcKey) -}}
-      {{- fail (printf "service %s sourcePort key %q not found in .Values.app.ports" $svcName $srcKey) -}}
+    {{- if not (hasKey $root.Values.ports $srcKey) -}}
+      {{- fail (printf "service %s sourcePort key %q not found in .Values.ports" $svcName $srcKey) -}}
     {{- end -}}
-    {{- if not (hasKey $root.Values.app.ports $tgtKey) -}}
-      {{- fail (printf "service %s targetPort key %q not found in .Values.app.ports" $svcName $tgtKey) -}}
+    {{- if not (hasKey $root.Values.ports $tgtKey) -}}
+      {{- fail (printf "service %s targetPort key %q not found in .Values.ports" $svcName $tgtKey) -}}
     {{- end -}}
-    {{- $srcDef := index $root.Values.app.ports $srcKey }}
-    {{- $tgtDef := index $root.Values.app.ports $tgtKey }}
+    {{- $srcDef := index $root.Values.ports $srcKey }}
+    {{- $tgtDef := index $root.Values.ports $tgtKey }}
     - name: {{ lower $srcDef.name }}
-      port: {{ include "app.resolvePort" (list $srcDef.port $root.Values.app.configData (printf "service %s source port %s" $svcName $srcKey)) }}
-      targetPort: {{ include "app.resolvePort" (list $tgtDef.port $root.Values.app.configData (printf "service %s target port %s" $svcName $tgtKey)) }}
+      port: {{ include "app.resolvePort" (list $srcDef.port $root.Values.configData (printf "service %s source port %s" $svcName $srcKey) true) }}
+      targetPort: {{ include "app.resolvePort" (list $tgtDef.port $root.Values.configData (printf "service %s target port %s" $svcName $tgtKey) true) }}
       protocol: {{ $srcDef.protocol | default "TCP" }}
     {{- end }}
   {{ end }}

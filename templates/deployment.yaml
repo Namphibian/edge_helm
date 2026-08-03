@@ -1,71 +1,84 @@
+{{- $root := . -}}
+{{- $apps := $root.Values.app | default dict -}}
+{{- range $appName := (keys $apps | sortAlpha) }}
+{{- $app := index $apps $appName -}}
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "app.fullname" . }}
-  namespace: {{ .Release.Namespace }}
+  name: {{ include "app.fullname" $root }}-{{ include "app.kebab" $appName | trim }}
+  namespace: {{ $root.Release.Namespace }}
   labels:
-    {{- include "app.labels" . | nindent 4 }}
-  {{- if and .Values.app.deployment .Values.app.deployment.annotations }}
+    {{- include "app.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ include "app.kebab" $appName | trim }}
+  {{- if and $app.deployment $app.deployment.annotations }}
   annotations:
-    {{- include "app.annotations" (list .Values.app.deployment.annotations .) | trim | nindent 4 }}
+    {{- include "app.annotations" (list $app.deployment.annotations $root $app.annotationSets) | trim | nindent 4 }}
   {{- end }}
 spec:
-  replicas: {{ include "app.configValue" (list .Values.app.replicaCount .Values.app.configData "deployment replicas") }}
+  replicas: {{ include "app.configValue" (list $app.replicaCount $root.Values.configData (printf "deployment %s replicas" $appName)) }}
   selector:
     matchLabels:
-      {{- include "app.selectorLabels" . | nindent 6 }}
+      {{- include "app.selectorLabels" $root | nindent 6 }}
+      app.kubernetes.io/component: {{ include "app.kebab" $appName | trim }}
   template:
     metadata:
       labels:
-        {{- include "app.selectorLabels" . | nindent 8 }}
+        {{- include "app.selectorLabels" $root | nindent 8 }}
+        app.kubernetes.io/component: {{ include "app.kebab" $appName | trim }}
     spec:
-      serviceAccountName: {{ include "app.fullname" . }}-svc
-      {{- with .Values.app.image.imagePullSecrets }}
+      serviceAccountName: {{ include "app.fullname" $root }}-svc
+      {{- with $app.image.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- $root := . }}
-      {{- $pmap := $root.Values.app.persistence | default dict }}
-      {{- $fmap := $root.Values.app.configFiles | default (list) }}
+      {{- $pmap := $app.persistence | default dict }}
+      {{- $fmap := $app.configFiles | default (list) }}
+      {{- $containerPorts := $app.containerPorts | default (list) }}
       containers:
       - name: {{ $root.Chart.Name }}
-        image: {{ $root.Values.app.image.repository }}:{{ $root.Values.app.image.tag }}
-        imagePullPolicy: {{ $root.Values.app.image.pullPolicy }}
+        image: {{ $app.image.repository }}:{{ $app.image.tag }}
+        imagePullPolicy: {{ $app.image.pullPolicy }}
+        {{- if gt (len $containerPorts) 0 }}
         ports:
-        {{- range $pkey, $p := $root.Values.app.ports }}
-          {{- if $p.containerPort  }}
+        {{- range $idx, $cp := $containerPorts }}
+        {{- if not (kindIs "map" $cp) }}{{- fail (printf "app.containerPorts[%d] must be a map with portDefinitionKey" $idx) }}{{- end }}
+        {{- if not (hasKey $cp "portDefinitionKey") }}{{- fail (printf "app.containerPorts[%d] must contain portDefinitionKey" $idx) }}{{- end }}
+        {{- $pkey := index $cp "portDefinitionKey" }}
+        {{- if not (hasKey $root.Values.ports $pkey) }}{{- fail (printf "app.containerPorts[%d] portDefinitionKey %q not found in .Values.ports" $idx $pkey) }}{{- end }}
+        {{- $p := index $root.Values.ports $pkey }}
           - name: {{ lower $p.name }}
-            containerPort: {{ include "app.resolvePort" (list $p.port $root.Values.app.configData (printf "container port %s" $pkey)) }}
+            containerPort: {{ include "app.resolvePort" (list $p.port $root.Values.configData (printf "container port %s" $pkey)) }}
             protocol: {{ $p.protocol | default "TCP" }}
-          {{- end  }}
+        {{- end }}
         {{- end }}
         env:
-          {{- range $key, $value := $root.Values.app.env }}
+          {{- range $key, $value := $app.env }}
           {{- if and (kindIs "map" $value) (hasKey $value "configDataKey") }}
           {{- $cfgKey := index $value "configDataKey" }}
-          {{- $entry := index $root.Values.app.configData $cfgKey }}
+          {{- $entry := index $root.Values.configData $cfgKey }}
           {{- if hasKey $entry "description" }}
           # {{ index $entry "description" }}
           {{- end }}
           {{- end }}
           - name: {{ $key }}
-            value: '{{ include "app.envValue" (list $value $root.Values.app.configData (printf "env %s" $key)) }}'
+            value: '{{ include "app.envValue" (list $value $root.Values.configData (printf "env %s" $key)) }}'
           {{- end }}
         # Liveness Probe
-        {{- $liveCfg := $root.Values.app.probes.liveness -}}
+        {{- $liveCfg := $app.probes.liveness -}}
         {{- $liveTypeRaw := $liveCfg.probeType -}}
         {{- if not $liveTypeRaw }}{{- fail "probes.liveness.probeType is required" }}{{- end }}
         {{- $liveTypeName := lower $liveTypeRaw -}}
-        {{- $liveType := index $root.Values.app.probeTypes $liveTypeRaw -}}
+        {{- $liveType := index $app.probeTypes $liveTypeRaw -}}
         {{- if not $liveType }}{{- fail (printf "probes.liveness.probeType %q not found under app.probeTypes" $liveTypeRaw) }}{{- end }}
         livenessProbe:
           {{- if eq $liveTypeName "tcpsocket" }}
           tcpSocket:
-            port: {{ include "app.resolvePort" (list (index $liveType "port") $root.Values.app.configData "liveness probe") }}
+            port: {{ include "app.resolvePort" (list (index $liveType "port") $root.Values.configData "liveness probe") }}
           {{- else if eq $liveTypeName "httpget" }}
           httpGet:
             path: {{ $liveType.path }}
-            port: {{ include "app.resolvePort" (list (index $liveType "port") $root.Values.app.configData "liveness probe httpGet") }}
+            port: {{ include "app.resolvePort" (list (index $liveType "port") $root.Values.configData "liveness probe httpGet") }}
           {{- else if eq $liveTypeName "exec" }}
           exec:
             command:
@@ -80,20 +93,20 @@ spec:
           timeoutSeconds: {{ $liveCfg.timeoutSeconds }}
           failureThreshold: {{ $liveCfg.failureThreshold }}
         # Readiness Probe
-        {{- $readyCfg := $root.Values.app.probes.readiness -}}
+        {{- $readyCfg := $app.probes.readiness -}}
         {{- $readyTypeRaw := $readyCfg.probeType -}}
         {{- if not $readyTypeRaw }}{{- fail "probes.readiness.probeType is required" }}{{- end }}
         {{- $readyTypeName := lower $readyTypeRaw -}}
-        {{- $readyType := index $root.Values.app.probeTypes $readyTypeRaw -}}
+        {{- $readyType := index $app.probeTypes $readyTypeRaw -}}
         {{- if not $readyType }}{{- fail (printf "probes.readiness.probeType %q not found under app.probeTypes" $readyTypeRaw) }}{{- end }}
         readinessProbe:
           {{- if eq $readyTypeName "tcpsocket" }}
           tcpSocket:
-            port: {{ include "app.resolvePort" (list (index $readyType "port") $root.Values.app.configData "readiness probe") }}
+            port: {{ include "app.resolvePort" (list (index $readyType "port") $root.Values.configData "readiness probe") }}
           {{- else if eq $readyTypeName "httpget" }}
           httpGet:
             path: {{ $readyType.path }}
-            port: {{ include "app.resolvePort" (list (index $readyType "port") $root.Values.app.configData "readiness probe httpGet") }}
+            port: {{ include "app.resolvePort" (list (index $readyType "port") $root.Values.configData "readiness probe httpGet") }}
           {{- else if eq $readyTypeName "exec" }}
           exec:
             command:
@@ -107,30 +120,30 @@ spec:
           periodSeconds: {{ $readyCfg.periodSeconds }}
           timeoutSeconds: {{ $readyCfg.timeoutSeconds }}
           failureThreshold: {{ $readyCfg.failureThreshold }}
-        {{- $qos := $root.Values.app.resources.qos | default "Guaranteed" }}
+        {{- $qos := $app.resources.qos | default "Guaranteed" }}
         {{- if ne $qos "BestEffort" }}
         resources:
           {{- if eq $qos "Guaranteed" }}
           requests:
-            cpu: {{ include "app.configValue" (list $root.Values.app.resources.limits.cpu $root.Values.app.configData "resources limits cpu") }}m
-            memory: {{ include "app.configValue" (list $root.Values.app.resources.limits.memory $root.Values.app.configData "resources limits memory") }}
+            cpu: {{ include "app.configValue" (list $app.resources.limits.cpu $root.Values.configData "resources limits cpu") }}m
+            memory: {{ include "app.configValue" (list $app.resources.limits.memory $root.Values.configData "resources limits memory") }}
           limits:
-            cpu: {{ include "app.configValue" (list $root.Values.app.resources.limits.cpu $root.Values.app.configData "resources limits cpu") }}m
-            memory: {{ include "app.configValue" (list $root.Values.app.resources.limits.memory $root.Values.app.configData "resources limits memory") }}
+            cpu: {{ include "app.configValue" (list $app.resources.limits.cpu $root.Values.configData "resources limits cpu") }}m
+            memory: {{ include "app.configValue" (list $app.resources.limits.memory $root.Values.configData "resources limits memory") }}
           {{- end }}
           {{- if eq $qos "Burstable" }}
           requests:
-            cpu: {{ include "app.configValue" (list $root.Values.app.resources.requests.cpu $root.Values.app.configData "resources requests cpu") }}m
-            memory: {{ include "app.configValue" (list $root.Values.app.resources.requests.memory $root.Values.app.configData "resources requests memory") }}
+            cpu: {{ include "app.configValue" (list $app.resources.requests.cpu $root.Values.configData "resources requests cpu") }}m
+            memory: {{ include "app.configValue" (list $app.resources.requests.memory $root.Values.configData "resources requests memory") }}
           {{- end }}
           {{- if eq $qos "Burstable" }}
-          {{- if $root.Values.app.resources.limits }}
+          {{- if $app.resources.limits }}
           limits:
-            {{- if $root.Values.app.resources.limits.cpu }}
-            cpu: {{ include "app.configValue" (list $root.Values.app.resources.limits.cpu $root.Values.app.configData "resources limits cpu") }}m
+            {{- if $app.resources.limits.cpu }}
+            cpu: {{ include "app.configValue" (list $app.resources.limits.cpu $root.Values.configData "resources limits cpu") }}m
             {{- end }}
-            {{- if $root.Values.app.resources.limits.memory }}
-            memory: {{ include "app.configValue" (list $root.Values.app.resources.limits.memory $root.Values.app.configData "resources limits memory") }}
+            {{- if $app.resources.limits.memory }}
+            memory: {{ include "app.configValue" (list $app.resources.limits.memory $root.Values.configData "resources limits memory") }}
             {{- end }}
           {{- end }}
           {{- end }}
@@ -176,3 +189,4 @@ spec:
           {{- end }}
         {{- end }}
       {{- end }}
+{{- end }}

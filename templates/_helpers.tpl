@@ -69,7 +69,7 @@ Parameters (list): [ $rawKey, $configData, $contextName ]
                    Supports exactly one level of dot-notation sub-field access:
                      "buyboostOpenapiHost.host"  → cfgKey=buyboostOpenapiHost, subField=host
                    Deeper paths (e.g. "a.b.c") are not supported and will fail.
-  - $configData  : $.Values.app.configData
+  - $configData  : $.Values.configData
   - $contextName : caller label used in fail() messages
 
 Fails with a descriptive message if:
@@ -89,7 +89,7 @@ Fails with a descriptive message if:
   {{- $subField := "" -}}
   {{- if eq (len $parts) 2 -}}{{- $subField = last $parts -}}{{- end -}}
   {{- if not (hasKey $configData $cfgKey) -}}
-    {{- fail (printf "%s: configDataKey %q not found in .Values.app.configData" $contextName $cfgKey) -}}
+    {{- fail (printf "%s: configDataKey %q not found in .Values.configData" $contextName $cfgKey) -}}
   {{- end -}}
   {{- $entry := index $configData $cfgKey -}}
   {{- if not (hasKey $entry "value") -}}
@@ -136,7 +136,7 @@ app.configValue — resolve a value that is either a literal or a configDataKey 
 Parameters (list): [ $cfg, $configData, $contextName ]
   - $cfg          : the value to resolve — a literal (string/int/bool/…) or a
                     map containing a "configDataKey" key
-  - $configData   : $.Values.app.configData
+  - $configData   : $.Values.configData
   - $contextName  : caller label used in fail() messages
 
 Returns the resolved value as-is (callers are responsible for further formatting):
@@ -194,9 +194,10 @@ Kept as a named alias for call-sites that explicitly want a string context.
 {{- /*
 app.annotations — render a merged annotations block from named annotation sets.
 
-Parameters (list): [ $annotationNames, $root ]
+Parameters (list): [ $annotationNames, $root, $annotationSets? ]
   - $annotationNames : list of annotation-set names defined in app.annotationSets
   - $root            : the Helm root context ($)
+  - $annotationSets  : optional app-specific annotationSets map
 
 Outputs key: "value" lines (without the parent "annotations:" key).
 Annotation values support the configDataKey pattern.
@@ -204,11 +205,26 @@ Annotation values support the configDataKey pattern.
 {{- define "app.annotations" -}}
 {{- $annotationNames := index . 0 -}}
 {{- $root := index . 1 -}}
+{{- $annotationSets := dict -}}
+{{- if ge (len .) 3 -}}
+  {{- $annotationSets = (index . 2 | default dict) -}}
+{{- else -}}
+  {{- if and (kindIs "map" $root.Values.app) (gt (len $root.Values.app) 0) -}}
+    {{- $firstAppName := first (keys $root.Values.app | sortAlpha) -}}
+    {{- $firstApp := index $root.Values.app $firstAppName -}}
+    {{- if and (kindIs "map" $firstApp) (hasKey $firstApp "annotationSets") -}}
+      {{- $annotationSets = index $firstApp "annotationSets" -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
 {{- range $asetName := $annotationNames -}}
-{{- $aset := index $root.Values.app.annotationSets $asetName -}}
+{{- if not (hasKey $annotationSets $asetName) -}}
+  {{- fail (printf "annotation set %q not found" $asetName) -}}
+{{- end -}}
+{{- $aset := index $annotationSets $asetName -}}
 {{- range $ak := (keys $aset | sortAlpha) }}
 {{- $av := index $aset $ak }}
-{{ $ak }}: {{ include "app.configValue" (list $av $root.Values.app.configData (printf "annotation %s.%s" $asetName $ak)) | quote }}
+{{ $ak }}: {{ include "app.configValue" (list $av $root.Values.configData (printf "annotation %s.%s" $asetName $ak)) | quote }}
 {{- end -}}
 {{- end -}}
 {{- end -}}
@@ -218,7 +234,7 @@ app.envValue — resolve a value for use as a container env-var string.
 
 Parameters (list): [ $cfg, $configData, $contextName ]
   - $cfg          : the value to resolve — a literal or a configDataKey map
-  - $configData   : $.Values.app.configData
+  - $configData   : $.Values.configData
   - $contextName  : caller label used in fail() messages
 
 Resolution rules (applied in order):
@@ -278,7 +294,7 @@ app.transformContent — render a transform map as KEY=VALUE lines for use in
 
 Parameters (list): [ $transform, $configData, $contextName ]
   - $transform    : map of "some.key": (literal | configDataKey reference)
-  - $configData   : $.Values.app.configData
+  - $configData   : $.Values.configData
   - $contextName  : caller label used in fail() messages
 
 Each value is resolved using app.envValue, so lists, maps and URL types are
@@ -306,15 +322,18 @@ Example output:
 {{- /*
 app.resolvePort — resolve a port value and guarantee numeric string output.
 
-Parameters (list): [ $portCfg, $configData, $contextName ]
+Parameters (list): [ $portCfg, $configData, $contextName, $strictConfigRefOnly? ]
   - $portCfg      : the port value — either a literal number/string or a map
-                    containing "portDefinitionKey" pointing to a port value
-  - $configData   : $.Values.app.configData
+                    containing "configDataKey" (preferred) or
+                    "portDefinitionKey" (legacy alias) pointing to a port value
+  - $configData   : $.Values.configData
   - $contextName  : caller label used in fail() messages
+  - $strictConfigRefOnly (optional): when true, map refs must use configDataKey
+                                     and portDefinitionKey is rejected
 
 Returns: the port as a numeric string (e.g. "8080").
 
-Both the portDefinitionKey and literal branches are stringified to $raw via
+Both the configDataKey/portDefinitionKey and literal branches are stringified to $raw via
 printf "%v", then validated with regex "^[1-9][0-9]*$" before int()
 conversion. This prevents silent coercion of non-numeric values to 0 and
 rejects strings that look non-numeric (e.g. "http-tomcat", "0", "8.0").
@@ -323,12 +342,29 @@ rejects strings that look non-numeric (e.g. "http-tomcat", "0", "8.0").
   {{- $portCfg     := index . 0 -}}
   {{- $configData  := index . 1 -}}
   {{- $contextName := index . 2 -}}
+  {{- $strictConfigRefOnly := false -}}
+  {{- if ge (len .) 4 -}}
+    {{- $strictConfigRefOnly = index . 3 -}}
+  {{- end -}}
   {{- $raw := "" -}}
   {{- if kindIs "map" $portCfg -}}
-    {{- if not (hasKey $portCfg "portDefinitionKey") -}}
-      {{- fail (printf "%s: port map must contain portDefinitionKey" $contextName) -}}
+    {{- $hasCfgRef := hasKey $portCfg "configDataKey" -}}
+    {{- $hasPortDefRef := hasKey $portCfg "portDefinitionKey" -}}
+    {{- if and $strictConfigRefOnly $hasPortDefRef -}}
+      {{- fail (printf "%s: portDefinitionKey is not allowed in this context; use configDataKey or a literal numeric value" $contextName) -}}
     {{- end -}}
-    {{- $ref := index $portCfg "portDefinitionKey" -}}
+    {{- if and $hasCfgRef $hasPortDefRef -}}
+      {{- fail (printf "%s: port map cannot contain both configDataKey and portDefinitionKey" $contextName) -}}
+    {{- end -}}
+    {{- if not (or $hasCfgRef $hasPortDefRef) -}}
+      {{- fail (printf "%s: port map must contain configDataKey (preferred) or portDefinitionKey" $contextName) -}}
+    {{- end -}}
+    {{- $ref := "" -}}
+    {{- if $hasCfgRef -}}
+      {{- $ref = index $portCfg "configDataKey" -}}
+    {{- else -}}
+      {{- $ref = index $portCfg "portDefinitionKey" -}}
+    {{- end -}}
     {{- $r := include "app.resolveConfigDataEntry" (list $ref $configData $contextName) | fromJson -}}
     {{- if $r.subField -}}
       {{- if not (kindIs "map" $r.value) -}}

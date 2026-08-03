@@ -1,18 +1,21 @@
-{{- range $name, $cfg := .Values.app.persistence }}
+{{- $root := . -}}
+{{- $appName := first (keys $root.Values.app | sortAlpha) -}}
+{{- $app := index $root.Values.app $appName -}}
+{{- range $name, $cfg := $app.persistence }}
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: {{ include "app.fullname" $ }}-{{ (trim (include "app.kebab" $name)) }}
-  namespace: {{ $.Release.Namespace }}
+  name: {{ include "app.fullname" $root }}-{{ (trim (include "app.kebab" $name)) }}
+  namespace: {{ $root.Release.Namespace }}
   labels:
-    {{- include "app.labels" $ | nindent 4 }}
+    {{- include "app.labels" $root | nindent 4 }}
   {{- if or (and $cfg.backup $cfg.backup.enabled) $cfg.annotations }}
   annotations:
     {{- if and $cfg.backup $cfg.backup.enabled }}
     k10.kasten.io/backup: "true"
     {{- end }}
     {{- if $cfg.annotations }}
-    {{- include "app.annotations" (list $cfg.annotations $) | trim | nindent 4 }}
+    {{- include "app.annotations" (list $cfg.annotations $root $app.annotationSets) | trim | nindent 4 }}
     {{- end }}
   {{- end }}
 spec:

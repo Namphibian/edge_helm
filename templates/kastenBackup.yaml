@@ -1,5 +1,7 @@
 {{- $root := . -}}
-{{- range $name, $cfg := $root.Values.app.persistence }}
+{{- $appName := first (keys $root.Values.app | sortAlpha) -}}
+{{- $app := index $root.Values.app $appName -}}
+{{- range $name, $cfg := $app.persistence }}
 {{- if and $cfg.backup $cfg.backup.enabled }}
 ---
 apiVersion: config.kio.kasten.io/v1alpha1
@@ -11,7 +13,7 @@ metadata:
     {{- include "app.labels" $root | nindent 4 }}
   {{- if $cfg.backup.annotations }}
   annotations:
-    {{- include "app.annotations" (list $cfg.backup.annotations $root) | trim | nindent 4 }}
+    {{- include "app.annotations" (list $cfg.backup.annotations $root $app.annotationSets) | trim | nindent 4 }}
   {{- end }}
 spec:
   comment: "Backup policy for {{ $name }} PVC"

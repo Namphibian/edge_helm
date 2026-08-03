@@ -1,5 +1,7 @@
 {{- $root := . -}}
-{{- with $root.Values.app.networkPolicy }}
+{{- $appName := first (keys $root.Values.app | sortAlpha) -}}
+{{- $app := index $root.Values.app $appName -}}
+{{- with $app.networkPolicy }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -10,7 +12,7 @@ metadata:
     {{- include "app.labels" $root | nindent 4 }}
   {{- if .ingress.annotations }}
   annotations:
-    {{- include "app.annotations" (list .ingress.annotations $root) | trim | nindent 4 }}
+    {{- include "app.annotations" (list .ingress.annotations $root $app.annotationSets) | trim | nindent 4 }}
   {{- end }}
 spec:
   podSelector:
@@ -29,9 +31,9 @@ spec:
         {{- end }}
       ports:
         {{- range .ingress.ports }}
-        {{- $portDef := index $root.Values.app.ports . }}
+        {{- $portDef := index $root.Values.ports . }}
         - protocol: {{ $portDef.protocol | default "TCP" }}
-          port: {{ include "app.resolvePort" (list $portDef.port $root.Values.app.configData (printf "networkpolicy ingress port %s" .)) }}
+          port: {{ include "app.resolvePort" (list $portDef.port $root.Values.configData (printf "networkpolicy ingress port %s" .) true) }}
         {{- end }}
 ---
 apiVersion: networking.k8s.io/v1
@@ -43,7 +45,7 @@ metadata:
     {{- include "app.labels" $root | nindent 4 }}
   {{- if .egress.annotations }}
   annotations:
-    {{- include "app.annotations" (list .egress.annotations $root) | trim | nindent 4 }}
+    {{- include "app.annotations" (list .egress.annotations $root $app.annotationSets) | trim | nindent 4 }}
   {{- end }}
 spec:
   podSelector:
@@ -55,9 +57,9 @@ spec:
     {{- range .egress.allowedHosts }}
     - to:
         - ipBlock:
-            cidr: {{ include "app.configValue" (list .ip $root.Values.app.configData (printf "networkpolicy egress %s ip" .name)) }}/32
+            cidr: {{ include "app.configValue" (list .ip $root.Values.configData (printf "networkpolicy egress %s ip" .name)) }}/32
       ports:
         - protocol: TCP
-          port: {{ include "app.resolvePort" (list .port $root.Values.app.configData (printf "networkpolicy egress %s port" .name)) }}
+          port: {{ include "app.resolvePort" (list .port $root.Values.configData (printf "networkpolicy egress %s port" .name)) }}
     {{- end }}
 {{- end }}

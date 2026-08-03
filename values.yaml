@@ -2,14 +2,19 @@
 # EVS Helm Chart - values.yaml
 # =============================================================================
 # This file contains all configurable values for the EVS (Edge Video/Event
-# Storage) Helm chart. It is organised into two main sections:
+# Storage) Helm chart. It is organised into seven top-level sections:
 #
-#   1. project  - Namespace-level metadata, labels, and resource quotas
-#   2. app      - Application configuration (images, ports, env, resources, etc.)
+#   1. project         - Namespace-level metadata, labels, and resource quotas
+#   2. configData      - Shared value registry resolved through configDataKey
+#   3. ports           - Reusable port definitions
+#   4. services        - Service definitions by service type
+#   5. app             - Application configuration (image, env, resources, probes, etc.)
+#   6. secretStores    - External Secrets SecretStore definitions
+#   7. externalSecrets - ExternalSecret definitions
 #
 # The chart uses a "configData / configDataKey" pattern for shared values.
 # Any field can either hold a literal value or a map with a `configDataKey`
-# that references an entry in `app.configData`. The template helpers resolve
+# that references an entry in top-level `configData`. The template helpers resolve
 # both forms transparently. See the README.md for full details.
 # =============================================================================
 
@@ -52,675 +57,688 @@ project:
       persistentvolumeclaims: "5"
 
 # -----------------------------------------------------------------------------
+# configData - Centralised shared configuration registry
+# -----------------------------------------------------------------------------
+# Every entry follows the schema:
+#   <key>:
+#     description: "<human-readable description>"
+#     value: <default value>
+#     type: "int" | "string" | "list" | "url"
+#     joinChar: ","  # optional, only for list values rendered into env vars
+#
+# Other sections reference these entries via `configDataKey: <key>`.
+# Descriptions are rendered as YAML comments above env vars in the Deployment.
+# Override any value at install time with:
+#   --set configData.<key>.value=<newValue>
+# -----------------------------------------------------------------------------
+configData:
+
+  # -- Ports ------------------------------------------------------------------
+
+  # The port the server will listen on for HTTP/S requests
+  serverPort:
+    description: "The port the server will listen on for HTTP/S requests"
+    value: "8080"
+    type: "int"
+
+  # Port used for Prometheus metrics scraping
+  prometheusPort:
+    description: "Port used for Prometheus metrics scraping"
+    value: "9090"
+    type: "int"
+
+  # -- Spring Boot / Servlet settings -----------------------------------------
+
+  # The servlet context path for the application
+  serverServletContextPath:
+    description: "The servlet context path for the application"
+    value: "/evs"
+    type: "string"
+
+  # The application server version
+  serverVersion:
+    description: "The application server version"
+    value: "1.0.1"
+    type: "string"
+
+  # -- Tomcat tuning parameters -----------------------------------------------
+
+  # Maximum number of Tomcat worker threads
+  serverTomcatMaxThreads:
+    description: "Maximum number of Tomcat worker threads"
+    value: "500"
+    type: "int"
+
+  # Minimum number of Tomcat spare threads
+  serverTomcatMinSpareThreads:
+    description: "Minimum number of Tomcat spare threads"
+    value: "200"
+    type: "int"
+
+  # Maximum number of Tomcat connections
+  serverTomcatMaxConnections:
+    description: "Maximum number of Tomcat connections"
+    value: "20000"
+    type: "int"
+
+  # Maximum queue length for incoming connection requests
+  serverTomcatAcceptCount:
+    description: "Maximum queue length for incoming connection requests"
+    value: "1000"
+    type: "int"
+
+  # Tomcat connection timeout in milliseconds
+  serverTomcatConnectionTimeout:
+    description: "Tomcat connection timeout in milliseconds"
+    value: "600000"
+    type: "int"
+
+  # Tomcat keep-alive timeout in milliseconds
+  serverTomcatKeepAliveTimeout:
+    description: "Tomcat keep-alive timeout in milliseconds"
+    value: "600000"
+    type: "int"
+
+  # Maximum size of HTTP form post content in bytes
+  serverTomcatMaxHttpFormPostSize:
+    description: "Maximum size of HTTP form post content in bytes"
+    value: "104857600"
+    type: "int"
+
+  # -- OpenAPI authentication -------------------------------------------------
+
+  # List of OpenAPI user credentials and their org access.
+  # Rendered as JSON where needed (e.g. env/transform outputs).
+  openapiUsers:
+    description: "List of OpenAPI user credentials and their org access"
+    value:
+      - ak: "test1"
+        sk: "000000"
+        orgs:
+          - "**"
+    type: "list"
+
+  # -- Storage settings -------------------------------------------------------
+
+  # Maximum number of concurrent uploads
+  storageUploadMaxConcurrency:
+    description: "Maximum number of concurrent uploads"
+    value: "5"
+    type: "int"
+
+  # List of file extensions that are forbidden from upload
+  # `joinChar` controls how this list is joined when rendered as env/transform text.
+  storageForbiddenFileTypes:
+    description: "List of file extensions that are forbidden from upload"
+    value:
+      - ".exe"
+      - ".com"
+      - ".dll"
+      - ".sys"
+      - ".scr"
+      - ".bat"
+      - ".cmd"
+      - ".ps1"
+      - ".psm1"
+      - ".vbs"
+      - ".vbe"
+      - ".js"
+      - ".jse"
+      - ".wsf"
+      - ".msc"
+      - ".hta"
+      - ".ear"
+      - ".ipa"
+      - ".docm"
+      - ".xlsm"
+      - ".pptm"
+      - ".dotm"
+      - ".xltm"
+      - ".potm"
+      - ".docx"
+      - ".xlsx"
+      - ".pptx"
+      - ".rtf"
+      - ".sql"
+      - ".db"
+      - ".sqlite"
+      - ".mdb"
+      - ".accdb"
+      - ".ini"
+      - ".key"
+      - ".cert"
+      - ".pfx"
+      - ".php"
+      - ".php3"
+      - ".php4"
+      - ".php5"
+      - ".phtml"
+      - ".asp"
+      - ".aspx"
+      - ".ascx"
+      - ".jsp"
+      - ".jspx"
+      - ".java"
+      - ".cgi"
+      - ".pl"
+      - ".lnk"
+      - ".url"
+      - ".desktop"
+      - ".bin"
+      - ".dat"
+      - ".iso"
+      - ".img"
+      - ".vhd"
+      - ".vmdk"
+      - ".cab"
+      - ".cmdlet"
+    type: "list"
+    joinChar: ","
+
+  # -- Buyboost cloud service integration -------------------------------------
+
+  # Structured URL entry (`type: url`).
+  # Helpers can resolve:
+  # - full URL (`configDataKey: buyboostOpenapiHost`)
+  # - single field (`configDataKey: buyboostOpenapiHost.host`)
+  buyboostOpenapiHost:
+    description: "Buyboost cloud service host URL for egress traffic"
+    value:
+      scheme: "http"
+      host: "172.16.125.46"
+      port: 8185
+      path: "/buyboost"
+    type: "url"
+
+  # Buyboost OpenAPI access key
+  buyboostOpenapiAk:
+    description: "Buyboost OpenAPI access key"
+    value: "test"
+    type: "string"
+
+  # Buyboost OpenAPI secret key
+  buyboostOpenapiSk:
+    description: "Buyboost OpenAPI secret key"
+    value: "000000"
+    type: "string"
+
+  # -- HaiDP cloud service integration ----------------------------------------
+
+  haidpOpenapiHost:
+    description: "HaiDP cloud service host URL for egress traffic"
+    value:
+      scheme: "http"
+      host: "10.13.108.6"
+      port: 9192
+      path: "/api1"
+    type: "url"
+
+  haidpOpenapiCode:
+    description: "HaiDP OpenAPI code identifier"
+    value: "edge"
+    type: "string"
+
+  haidpOpenapiDesc:
+    description: "HaiDP OpenAPI description"
+    value: "EVS"
+    type: "string"
+
+  haidpOpenapiAk:
+    description: "HaiDP OpenAPI access key"
+    value: "IJpBSwnImQArnXRarbod"
+    type: "string"
+
+  haidpOpenapiSk:
+    description: "HaiDP OpenAPI secret key"
+    value: "vr1C8tELhFoqK3SccL3vRcdZDKWsudJSSu9vkob8"
+    type: "string"
+
+  # -- Scheduler settings -----------------------------------------------------
+
+  schedulerUploadStartTime:
+    description: "Daily upload scheduler start time (local time, HH:mm)"
+    value: "09:00"
+    type: "string"
+
+  schedulerUploadEndTime:
+    description: "Daily upload scheduler end time (local time, HH:mm)"
+    value: "18:30"
+    type: "string"
+
+# -----------------------------------------------------------------------------
+# Port definitions (top-level)
+# -----------------------------------------------------------------------------
+ports:
+  serverPort:
+    port:
+      configDataKey: serverPort
+    name: "http-tomcat"
+    protocol: TCP
+    description: "Port used by the application to run the server aka listening port."
+
+  prometheusPort:
+    port:
+      configDataKey: prometheusPort
+    name: "tcp-prom"
+    protocol: TCP
+    description: "Used to configure the prometheus port for scraping"
+
+  # dnsPort:
+  #   port: 53
+  #   name: "dns"
+  #   protocol: UDP
+  #   description: "DNS port for internal service discovery"
+
+# -----------------------------------------------------------------------------
+# Services (top-level)
+# -----------------------------------------------------------------------------
+# Service groups:
+# - clusterIp    -> renders type ClusterIP
+# - nodePort     -> renders type NodePort
+# - loadBalancer -> renders type LoadBalancer
+# - externalName -> renders type ExternalName
+# - headless     -> renders type ClusterIP + clusterIP: None
+#
+# Service object key (e.g. `api`) becomes the service name suffix.
+# For routable service groups, `exposedRoute: true` allows route template
+# to generate a Route for that service.
+services:
+  clusterIp:
+    api:
+      description: "This service hosts the API ports so that we can expose it to the world"
+      exposedRoute: false
+      #        exposeAsRoute:
+      #          enabled: true
+      #          annotations: []
+      annotations:
+        - prometheus
+        - istio
+      ports:
+        - sourcePort:
+            portDefinitionKey: serverPort
+          targetPort:
+            portDefinitionKey: serverPort
+        - sourcePort:
+            portDefinitionKey: prometheusPort
+          targetPort:
+            portDefinitionKey: prometheusPort
+    foo:
+      description: "This service hosts the API ports so that we can expose it to the world"
+      exposedRoute: false
+      #        exposeAsRoute:
+      #          enabled: true
+      #          annotations: []
+      annotations:
+        - prometheus
+        - istio
+      ports:
+        - sourcePort:
+            portDefinitionKey: serverPort
+          targetPort:
+            portDefinitionKey: serverPort
+        - sourcePort:
+            portDefinitionKey: prometheusPort
+          targetPort:
+            portDefinitionKey: prometheusPort
+
+#  nodePort:
+#    dns:
+#      description: "This service hosts the DNS ports so that we can expose it to the world"
+#      exposedRoute: false
+#      annotations:
+#        - prometheus
+#        - istio
+#      ports:
+#        - sourcePort:
+#            portDefinitionKey: dnsPort
+#          targetPort:
+#            portDefinitionKey: dnsPort
+
+#  loadBalancer:
+#    prometheus:
+#      description: "This service hosts the Prometheus ports so that we can expose it to the world"
+#      exposedRoute: true
+#      annotations:
+#        - prometheus
+#        - istio
+#      ports:
+#        - sourcePort:
+#            portDefinitionKey: prometheusPort
+#          targetPort:
+#            portDefinitionKey: prometheusPort
+
+#  externalName:
+#    mysql-dev:
+#      description: "This is an external name service that points to the mysql-dev service in the dev namespace"
+#      externalName: "mysql-dev.dev.svc.cluster.local"
+
+#  headless:
+#    evs-storage:
+#      description: "This is a headless service that points to the evs-storage service in the dev namespace"
+#      ports:
+#        - sourcePort:
+#            portDefinitionKey: serverPort
+#          targetPort:
+#            portDefinitionKey: serverPort
+
+# -----------------------------------------------------------------------------
+# External secret stores
+# -----------------------------------------------------------------------------
+secretStores:
+  evsAksVault:
+    tenantId: "123123-some-id-123123"
+    vaultName: "evs-akv"
+    authSecretRef:
+      # points to the secret that contains
+      # the azure service principal credentials
+      clientId:
+        name: azure-secret-sp
+        key: ClientID
+      clientSecret:
+        name: azure-secret-sp
+        key: ClientSecret
+
+# -----------------------------------------------------------------------------
+# External secrets
+# -----------------------------------------------------------------------------
+externalSecrets:
+  buyboostSecrets: #name of the external secret
+    refreshInterval: 1h
+    secretStoreRef:
+      name: secret-store-name # this is the name of the secret store that was created by the admins.
+      kind: SecretStore
+    target:
+      name: aksVault
+      creationPolicy: Owner
+    data:
+      - secretKey: DB_PASSWORD
+        remoteRef:
+          key: prod/db/password
+
+# -----------------------------------------------------------------------------
 # Application configuration
 # -----------------------------------------------------------------------------
 app:
+  evs:
 
-  # ---------------------------------------------------------------------------
-  # configData — Centralised configuration registry
-  # ---------------------------------------------------------------------------
-  # Every entry follows the schema:
-  #   <key>:
-  #     description: "<human-readable description>"
-  #     value: <default value>
-  #     type: "int" | "string" | "list" | "url"
-  #     joinChar: ","  # optional, only for list values rendered into env vars
-  #
-  # Other sections reference these entries via `configDataKey: <key>`.
-  # Descriptions are rendered as YAML comments above env vars in the Deployment.
-  # Override any value at install time with:
-  #   --set app.configData.<key>.value=<newValue>
-  # ---------------------------------------------------------------------------
-  configData:
+    # ---------------------------------------------------------------------------
+    # Container image
+    # ---------------------------------------------------------------------------
+    image:
+      repository: default-route-openshift-image-registry.apps-crc.testing/evs/evs
+      tag: dev
+      pullPolicy: IfNotPresent
+      imagePullSecrets:
+        - name: xxx
 
-    # -- Ports ------------------------------------------------------------------
-
-    # The port the server will listen on for HTTP/S requests
-    serverPort:
-      description: "The port the server will listen on for HTTP/S requests"
-      value: "8080"
-      type: "int"
-
-    # Port used for Prometheus metrics scraping
-    prometheusPort:
-      description: "Port used for Prometheus metrics scraping"
-      value: "9090"
-      type: "int"
-
-    # -- Spring Boot / Servlet settings -----------------------------------------
-
-    # The servlet context path for the application
-    serverServletContextPath:
-      description: "The servlet context path for the application"
-      value: "/evs"
-      type: "string"
-
-    # The application server version
-    serverVersion:
-      description: "The application server version"
-      value: "1.0.1"
-      type: "string"
-
-    # -- Tomcat tuning parameters -----------------------------------------------
-
-    # Maximum number of Tomcat worker threads
-    serverTomcatMaxThreads:
-      description: "Maximum number of Tomcat worker threads"
-      value: "500"
-      type: "int"
-
-    # Minimum number of Tomcat spare threads
-    serverTomcatMinSpareThreads:
-      description: "Minimum number of Tomcat spare threads"
-      value: "200"
-      type: "int"
-
-    # Maximum number of Tomcat connections
-    serverTomcatMaxConnections:
-      description: "Maximum number of Tomcat connections"
-      value: "20000"
-      type: "int"
-
-    # Maximum queue length for incoming connection requests
-    serverTomcatAcceptCount:
-      description: "Maximum queue length for incoming connection requests"
-      value: "1000"
-      type: "int"
-
-    # Tomcat connection timeout in milliseconds
-    serverTomcatConnectionTimeout:
-      description: "Tomcat connection timeout in milliseconds"
-      value: "600000"
-      type: "int"
-
-    # Tomcat keep-alive timeout in milliseconds
-    serverTomcatKeepAliveTimeout:
-      description: "Tomcat keep-alive timeout in milliseconds"
-      value: "600000"
-      type: "int"
-
-    # Maximum size of HTTP form post content in bytes
-    serverTomcatMaxHttpFormPostSize:
-      description: "Maximum size of HTTP form post content in bytes"
-      value: "104857600"
-      type: "int"
-
-    # -- OpenAPI authentication -------------------------------------------------
-
-    # List of OpenAPI user credentials and their org access.
-    # Rendered as JSON where needed (e.g. env/transform outputs).
-    openapiUsers:
-      description: "List of OpenAPI user credentials and their org access"
-      value:
-        - ak: "test1"
-          sk: "000000"
-          orgs:
-            - "**"
-      type: "list"
-
-    # -- Storage settings -------------------------------------------------------
-
-    # Maximum number of concurrent uploads
-    storageUploadMaxConcurrency:
-      description: "Maximum number of concurrent uploads"
-      value: "5"
-      type: "int"
-
-    # List of file extensions that are forbidden from upload
-    # `joinChar` controls how this list is joined when rendered as env/transform text.
-    storageForbiddenFileTypes:
-      description: "List of file extensions that are forbidden from upload"
-      value:
-        - ".exe"
-        - ".com"
-        - ".dll"
-        - ".sys"
-        - ".scr"
-        - ".bat"
-        - ".cmd"
-        - ".ps1"
-        - ".psm1"
-        - ".vbs"
-        - ".vbe"
-        - ".js"
-        - ".jse"
-        - ".wsf"
-        - ".msc"
-        - ".hta"
-        - ".ear"
-        - ".ipa"
-        - ".docm"
-        - ".xlsm"
-        - ".pptm"
-        - ".dotm"
-        - ".xltm"
-        - ".potm"
-        - ".docx"
-        - ".xlsx"
-        - ".pptx"
-        - ".rtf"
-        - ".sql"
-        - ".db"
-        - ".sqlite"
-        - ".mdb"
-        - ".accdb"
-        - ".ini"
-        - ".key"
-        - ".cert"
-        - ".pfx"
-        - ".php"
-        - ".php3"
-        - ".php4"
-        - ".php5"
-        - ".phtml"
-        - ".asp"
-        - ".aspx"
-        - ".ascx"
-        - ".jsp"
-        - ".jspx"
-        - ".java"
-        - ".cgi"
-        - ".pl"
-        - ".lnk"
-        - ".url"
-        - ".desktop"
-        - ".bin"
-        - ".dat"
-        - ".iso"
-        - ".img"
-        - ".vhd"
-        - ".vmdk"
-        - ".cab"
-        - ".cmdlet"
-      type: "list"
-      joinChar: ","
-
-    # -- Buyboost cloud service integration -------------------------------------
-
-    # Structured URL entry (`type: url`).
-    # Helpers can resolve:
-    # - full URL (`configDataKey: buyboostOpenapiHost`)
-    # - single field (`configDataKey: buyboostOpenapiHost.host`)
-    buyboostOpenapiHost:
-      description: "Buyboost cloud service host URL for egress traffic"
-      value:
-        scheme: "http"
-        host: "172.16.125.46"
-        port: 8185
-        path: "/buyboost"
-      type: "url"
-
-    # Buyboost OpenAPI access key
-    buyboostOpenapiAk:
-      description: "Buyboost OpenAPI access key"
-      value: "test"
-      type: "string"
-
-    # Buyboost OpenAPI secret key
-    buyboostOpenapiSk:
-      description: "Buyboost OpenAPI secret key"
-      value: "000000"
-      type: "string"
-
-    # -- HaiDP cloud service integration ----------------------------------------
-
-    haidpOpenapiHost:
-      description: "HaiDP cloud service host URL for egress traffic"
-      value:
-        scheme: "http"
-        host: "10.13.108.6"
-        port: 9192
-        path: "/api1"
-      type: "url"
-
-    haidpOpenapiCode:
-      description: "HaiDP OpenAPI code identifier"
-      value: "edge"
-      type: "string"
-
-    haidpOpenapiDesc:
-      description: "HaiDP OpenAPI description"
-      value: "EVS"
-      type: "string"
-
-    haidpOpenapiAk:
-      description: "HaiDP OpenAPI access key"
-      value: "IJpBSwnImQArnXRarbod"
-      type: "string"
-
-    haidpOpenapiSk:
-      description: "HaiDP OpenAPI secret key"
-      value: "vr1C8tELhFoqK3SccL3vRcdZDKWsudJSSu9vkob8"
-      type: "string"
-
-    # -- Scheduler settings -----------------------------------------------------
-
-    schedulerUploadStartTime:
-      description: "Daily upload scheduler start time (local time, HH:mm)"
-      value: "09:00"
-      type: "string"
-
-    schedulerUploadEndTime:
-      description: "Daily upload scheduler end time (local time, HH:mm)"
-      value: "18:30"
-      type: "string"
-
-  # ---------------------------------------------------------------------------
-  # Container image
-  # ---------------------------------------------------------------------------
-  image:
-    repository: default-route-openshift-image-registry.apps-crc.testing/evs/evs
-    tag: dev
-    pullPolicy: IfNotPresent
-    imagePullSecrets:
-      - name: xxx
-
-  # ---------------------------------------------------------------------------
-  # Deployment metadata
-  # ---------------------------------------------------------------------------
-  deployment:
-    annotations: [ ]
-
-  # ---------------------------------------------------------------------------
-  # Route metadata
-  # ---------------------------------------------------------------------------
-  route:
-    annotations: [ ]
-
-  # ---------------------------------------------------------------------------
-  # Replica count
-  # ---------------------------------------------------------------------------
-  replicaCount: 1
-  serviceAccount:
-    create: true
-    annotations: [ ]
-  # ---------------------------------------------------------------------------
-  # Annotation sets — reusable annotation groups
-  # ---------------------------------------------------------------------------
-  annotationSets:
-    prometheus:
-      prometheus.io/scrape: "true"
-      prometheus.io/port:
-        configDataKey: prometheusPort
-
-    awsInternal:
-      service.beta.kubernetes.io/aws-load-balancer-internal: "true"
-
-    istio:
-      traffic.sidecar.istio.io/includeInboundPorts:
-        configDataKey: "serverPort"
-
-  # ---------------------------------------------------------------------------
-  # Resource requests / limits with QoS support
-  # ---------------------------------------------------------------------------
-  resources:
-    qos: "BestEffort"
-    requests:
-      memory: "6Gi"
-      cpu: "750"
-    limits:
-      memory: "8Gi"
-      cpu: "1000"
-
-  # ---------------------------------------------------------------------------
-  # Persistent storage
-  # ---------------------------------------------------------------------------
-  persistence:
-    dataVolume:
+    # ---------------------------------------------------------------------------
+    # Deployment metadata
+    # ---------------------------------------------------------------------------
+    deployment:
       annotations: [ ]
-      backup:
-        enabled: true
-        frequency: "@daily"
-        retention: 7
-      storageClass: "crc-csi-hostpath-provisioner"
-      accessMode: ReadWriteOnce
-      size: 1Gi
-      name: evs-storage
-      mountPath: /app/storage
 
-  # ---------------------------------------------------------------------------
-  # Port definitions
-  # ---------------------------------------------------------------------------
-  ports:
-    serverPort:
-      port:
-        portDefinitionKey: serverPort
-      name: "http-tomcat"
-      protocol: TCP
-      description: "Port used by the application to run the server aka listening port."
-      containerPort: "true"
+    # ---------------------------------------------------------------------------
+    # Route metadata
+    # ---------------------------------------------------------------------------
+    route:
+      annotations: [ ]
 
-    prometheusPort:
-      port:
-        portDefinitionKey: prometheusPort
-      name: "tcp-prom"
-      protocol: TCP
-      description: "Used to configure the prometheus port for scraping"
-  #
-  #    dnsPort:
-  #      port: 53
-  #      name: "dns"
-  #      protocol: UDP
-  #      description: "DNS port for internal service discovery"
+    # ---------------------------------------------------------------------------
+    # Replica count
+    # ---------------------------------------------------------------------------
+    replicaCount: 1
+    serviceAccount:
+      create: true
+      annotations: [ ]
+    # ---------------------------------------------------------------------------
+    # Annotation sets — reusable annotation groups
+    # ---------------------------------------------------------------------------
+    annotationSets:
+      prometheus:
+        prometheus.io/scrape: "true"
+        prometheus.io/port:
+          configDataKey: prometheusPort
 
-  # ---------------------------------------------------------------------------
-  # Services (map-based schema by service category)
-  # ---------------------------------------------------------------------------
-  # Service groups:
-  # - clusterIp    -> renders type ClusterIP
-  # - nodePort     -> renders type NodePort
-  # - loadBalancer -> renders type LoadBalancer
-  # - externalName -> renders type ExternalName
-  # - headless     -> renders type ClusterIP + clusterIP: None
-  #
-  # Service object key (e.g. `api`) becomes the service name suffix.
-  # For routable service groups, `exposedRoute: true` allows route template
-  # to generate a Route for that service.
-  services:
-    clusterIp:
-      api:
-        description: "This service hosts the API ports so that we can expose it to the world"
-        exposedRoute: false
-        #        exposeAsRoute:
-        #          enabled: true
-        #          annotations: []
-        annotations:
-          - prometheus
-          - istio
+      awsInternal:
+        service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+
+      istio:
+        traffic.sidecar.istio.io/includeInboundPorts:
+          configDataKey: "serverPort"
+
+    # ---------------------------------------------------------------------------
+    # Resource requests / limits with QoS support
+    # ---------------------------------------------------------------------------
+    resources:
+      qos: "BestEffort"
+      requests:
+        memory: "6Gi"
+        cpu: "750"
+      limits:
+        memory: "8Gi"
+        cpu: "1000"
+
+    # ---------------------------------------------------------------------------
+    # Persistent storage
+    # ---------------------------------------------------------------------------
+    persistence:
+      dataVolume:
+        annotations: [ ]
+        backup:
+          enabled: true
+          frequency: "@daily"
+          retention: 7
+        storageClass: "crc-csi-hostpath-provisioner"
+        accessMode: ReadWriteOnce
+        size: 1Gi
+        name: evs-storage
+        mountPath: /app/storage
+
+    # ---------------------------------------------------------------------------
+    # Container ports (ports exposed by the container)
+    # ---------------------------------------------------------------------------
+  #  containerPorts:
+  #    - portDefinitionKey: serverPort
+
+    # ---------------------------------------------------------------------------
+    # Health probe types (shared probe definitions)
+    # ---------------------------------------------------------------------------
+    # Define probe templates once, then choose one by name per liveness/readiness.
+    probeTypes:
+      httpGet:
+        path: /evs
+        port:
+          portDefinitionKey: serverPort
+
+      tcpSocket:
+        port:
+          portDefinitionKey: serverPort
+
+      exec:
+        command: [ "/bin/sh", "-c", "curl -f http://localhost:8080/actuator/health || exit 1" ]
+
+    # ---------------------------------------------------------------------------
+    # Health probes (selectors + timing)
+    # ---------------------------------------------------------------------------
+    probes:
+      liveness:
+        probeType: exec
+        initialDelaySeconds: 60
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 3
+
+      readiness:
+        probeType: tcpSocket
+        initialDelaySeconds: 30
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 3
+
+      # To Be Added.
+      # Start up probe.
+
+    # ---------------------------------------------------------------------------
+    # Network policies
+    # ---------------------------------------------------------------------------
+    networkPolicy:
+      ingress:
+        allowedSources:
+          - type: podSelector
+            matchLabels:
+              app.kubernetes.io/name: evs
         ports:
-          - sourcePort:
-              portDefinitionKey: serverPort
-            targetPort:
-              portDefinitionKey: serverPort
-          - sourcePort:
-              portDefinitionKey: prometheusPort
-            targetPort:
-              portDefinitionKey: prometheusPort
-      foo:
-        description: "This service hosts the API ports so that we can expose it to the world"
-        exposedRoute: false
-        #        exposeAsRoute:
-        #          enabled: true
-        #          annotations: []
-        annotations:
-          - prometheus
-          - istio
-        ports:
-          - sourcePort:
-              portDefinitionKey: serverPort
-            targetPort:
-              portDefinitionKey: serverPort
-          - sourcePort:
-              portDefinitionKey: prometheusPort
-            targetPort:
-              portDefinitionKey: prometheusPort
+          - serverPort
 
-  #    nodePort:
-  #      dns:
-  #        description: "This service hosts the DNS ports so that we can expose it to the world"
-  #        exposedRoute: false
-  #        annotations:
-  #          - prometheus
-  #          - istio
-  #        ports:
-  #          - sourcePort:
-  #              portDefinitionKey: dnsPort
-  #            targetPort:
-  #              portDefinitionKey: dnsPort
+      egress:
+        allowedHosts:
+          - name: buyboost
+            ip:
+              configDataKey: buyboostOpenapiHost.host
+            port:
+              portDefinitionKey: buyboostOpenapiHost.port
+          - name: haidp
+            ip:
+              configDataKey: haidpOpenapiHost.host
+            port:
+              portDefinitionKey: haidpOpenapiHost.port
 
-  #    loadBalancer:
-  #      prometheus:
-  #        description: "This service hosts the Prometheus ports so that we can expose it to the world"
-  #        exposedRoute: true
-  #        annotations:
-  #          - prometheus
-  #          - istio
-  #        ports:
-  #          - sourcePort:
-  #              portDefinitionKey: prometheusPort
-  #            targetPort:
-  #              portDefinitionKey: prometheusPort
+    # ---------------------------------------------------------------------------
+    # Environment variables
+    # ---------------------------------------------------------------------------
+    env:
+      LOGGING_CONFIG: "/app/etc/logback-spring.xml"
+      SPRING_MAIN_BANNER_MODE: 'off'
+      SPRING_CONFIG_ADDITIONAL_LOCATIONS: "/app/config/secrets"
+      JAVA_UTIL_LOGGING_CONFIG_FILE: "/app/config/logging.properties"
+      #    SERVER_PORT:
+      #      configDataKey: serverPort
+      #    SERVER_SERVLET_CONTEXT_PATH:
+      #      configDataKey: serverServletContextPath
+      #    SERVER_VERSION:
+      #      configDataKey: serverVersion
+      #    SERVER_TOMCAT_MAX_THREADS:
+      #      configDataKey: serverTomcatMaxThreads
+      #    SERVER_TOMCAT_MIN_SPARE_THREADS:
+      #      configDataKey: serverTomcatMinSpareThreads
+      #    SERVER_TOMCAT_MAX_CONNECTIONS:
+      #      configDataKey: serverTomcatMaxConnections
+      #    SERVER_TOMCAT_ACCEPT_COUNT:
+      #      configDataKey: serverTomcatAcceptCount
+      #    SERVER_TOMCAT_CONNECTION_TIMEOUT:
+      #      configDataKey: serverTomcatConnectionTimeout
+      #    SERVER_TOMCAT_KEEP_ALIVE_TIMEOUT:
+      #      configDataKey: serverTomcatKeepAliveTimeout
+      #    SERVER_TOMCAT_MAX_HTTP_FORM_POST_SIZE:
+      #      configDataKey: serverTomcatMaxHttpFormPostSize
+      #    OPENAPI_USERS:
+      #      configDataKey: openapiUsers
+      #    STORAGE_UPLOAD_MAX_CONCURRENCY:
+      #      configDataKey: storageUploadMaxConcurrency
+      #    STORAGE_FORBIDDEN_FILE_TYPES:
+      #      configDataKey: storageForbiddenFileTypes
+      #    SCHEDULER_UPLOAD_START_TIME:
+      #      configDataKey: schedulerUploadStartTime
+      #    SCHEDULER_UPLOAD_END_TIME:
+      #      configDataKey: schedulerUploadEndTime
+      #    BUYBOOST_OPENAPI_HOST:
+      #      configDataKey: buyboostOpenapiHost
+      BUYBOOST_OPENAPI_AK:
+        configDataKey: buyboostOpenapiAk
+      BUYBOOST_OPENAPI_SK:
+        configDataKey: buyboostOpenapiSk
+      #    HAIDP_OPENAPI_HOST:
+      #      configDataKey: haidpOpenapiHost
+      #    HAIDP_OPENAPI_CODE:
+      #      configDataKey: haidpOpenapiCode
+      #    HAIDP_OPENAPI_DESC:
+      #      configDataKey: haidpOpenapiDesc
+      HAIDP_OPENAPI_AK:
+        configDataKey: haidpOpenapiAk
+      HAIDP_OPENAPI_SK:
+        configDataKey: haidpOpenapiSk
 
-  #    externalName:
-  #      mysql-dev:
-  #        description: "This is an external name service that points to the mysql-dev service in the dev namespace"
-  #        externalName: "mysql-dev.dev.svc.cluster.local"
+    # ---------------------------------------------------------------------------
+    # Config files mounted into the pod
+    # ---------------------------------------------------------------------------
+    # Each entry creates a ConfigMap/Secret + mount.
+    # Use `data` for literal block content, or `transform` to generate
+    # KEY=VALUE lines from configData references.
+    configFiles:
+      - name: "jul-logging-override"
+        mountPath: "/app/config"
+        subPath: "logging.properties"
+        type: configMap
+        data: |
+          handlers=java.util.logging.ConsoleHandler.level=INFO
+          java.util.logging.ConsoleHandler.level=INFO
+          java.util.logging.ConsoleHandler.formatter=java.util.logging.SimpleFormatter
+          java.util.logging.SimpleFormatter.format=%1$tF %1$tT.%1$tL %-7s [%7$s] %2$s - %5$s%n
+      - name: "logback-settings-override"
+        mountPath: "/app/etc"
+        subPath: "logback-spring.xml"
+        type: "configMap"
+        data: |
+          <configuration>
 
-  #    headless:
-  #      evs-storage:
-  #        description: "This is a headless service that points to the evs-storage service in the dev namespace"
-  #        ports:
-  #          - sourcePort:
-  #              portDefinitionKey: serverPort
-  #            targetPort:
-  #              portDefinitionKey: serverPort
+            <!-- Unified log pattern -->
+            <property name="LOG_PATTERN"
+                      value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger - %msg%n"/>
 
-  # ---------------------------------------------------------------------------
-  # Health probe types (shared probe definitions)
-  # ---------------------------------------------------------------------------
-  # Define probe templates once, then choose one by name per liveness/readiness.
-  probeTypes:
-    httpGet:
-      path: /evs
-      port:
-        portDefinitionKey: serverPort
+            <!-- Console only -->
+            <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+              <encoder>
+                <pattern>${LOG_PATTERN}</pattern>
+              </encoder>
+            </appender>
 
-    tcpSocket:
-      port:
-        portDefinitionKey: serverPort
+            <!-- Root logger -->
+            <root level="INFO">
+              <appender-ref ref="STDOUT"/>
+            </root>
 
-    exec:
-      command: [ "/bin/sh", "-c", "curl -f http://localhost:8080/actuator/health || exit 1" ]
+          </configuration>
+      - name: "application-properties-override"
+        mountPath: "/app/config"
+        subPath: "application.properties"
+        type: "configMap"
+        transform:
+          server.port:
+            configDataKey: serverPort
+          server.servlet.context.path:
+            configDataKey: serverServletContextPath
+          server.version:
+            configDataKey: serverVersion
+          server.tomcat.max-threads:
+            configDataKey: serverTomcatMaxThreads
+          server.tomcat.min-spare-threads:
+            configDataKey: serverTomcatMinSpareThreads
+          server.tomcat.max-connections:
+            configDataKey: serverTomcatMaxConnections
+          server.tomcat.accept-count:
+            configDataKey: serverTomcatAcceptCount
+          server.tomcat.connection-timeout:
+            configDataKey: serverTomcatConnectionTimeout
+          server.tomcat.keep-alive-timeout:
+            configDataKey: serverTomcatKeepAliveTimeout
+          server.tomcat.max-http-form-post-size:
+            configDataKey: serverTomcatMaxHttpFormPostSize
+          openapi.users:
+            configDataKey: openapiUsers
+          storage.upload.max.concurrency:
+            configDataKey: storageUploadMaxConcurrency
+          storage.forbidden.file.types:
+            configDataKey: storageForbiddenFileTypes
+          scheduler.upload.start_time:
+            configDataKey: schedulerUploadStartTime
+          scheduler.upload.end_time:
+            configDataKey: schedulerUploadEndTime
+          buyboost.openapi.host:
+            configDataKey: buyboostOpenapiHost
+          haidp.openapi.host:
+            configDataKey: haidpOpenapiHost
+          haidp.openapi.code:
+            configDataKey: haidpOpenapiCode
+          haidp.openapi.desc:
+            configDataKey: haidpOpenapiDesc
 
-  # ---------------------------------------------------------------------------
-  # Health probes (selectors + timing)
-  # ---------------------------------------------------------------------------
-  probes:
-    liveness:
-      probeType: exec
-      initialDelaySeconds: 60
-      periodSeconds: 10
-      timeoutSeconds: 5
-      failureThreshold: 3
-
-    readiness:
-      probeType: tcpSocket
-      initialDelaySeconds: 30
-      periodSeconds: 10
-      timeoutSeconds: 5
-      failureThreshold: 3
-
-    # To Be Added.
-    # Start up probe.
-
-  # ---------------------------------------------------------------------------
-  # Network policies
-  # ---------------------------------------------------------------------------
-  networkPolicy:
-    ingress:
-      allowedSources:
-        - type: podSelector
-          matchLabels:
-            app.kubernetes.io/name: evs
-      ports:
-        - serverPort
-
-    egress:
-      allowedHosts:
-        - name: buyboost
-          ip:
-            configDataKey: buyboostOpenapiHost.host
-          port:
-            portDefinitionKey: buyboostOpenapiHost.port
-        - name: haidp
-          ip:
-            configDataKey: haidpOpenapiHost.host
-          port:
-            portDefinitionKey: haidpOpenapiHost.port
-
-  # ---------------------------------------------------------------------------
-  # Environment variables
-  # ---------------------------------------------------------------------------
-  env:
-    LOGGING_CONFIG: "/app/etc/logback-spring.xml"
-    SPRING_MAIN_BANNER_MODE: 'off'
-    SPRING_CONFIG_ADDITIONAL_LOCATIONS: "/app/config/secrets"
-    JAVA_UTIL_LOGGING_CONFIG_FILE: "/app/config/logging.properties"
-    #    SERVER_PORT:
-    #      configDataKey: serverPort
-    #    SERVER_SERVLET_CONTEXT_PATH:
-    #      configDataKey: serverServletContextPath
-    #    SERVER_VERSION:
-    #      configDataKey: serverVersion
-    #    SERVER_TOMCAT_MAX_THREADS:
-    #      configDataKey: serverTomcatMaxThreads
-    #    SERVER_TOMCAT_MIN_SPARE_THREADS:
-    #      configDataKey: serverTomcatMinSpareThreads
-    #    SERVER_TOMCAT_MAX_CONNECTIONS:
-    #      configDataKey: serverTomcatMaxConnections
-    #    SERVER_TOMCAT_ACCEPT_COUNT:
-    #      configDataKey: serverTomcatAcceptCount
-    #    SERVER_TOMCAT_CONNECTION_TIMEOUT:
-    #      configDataKey: serverTomcatConnectionTimeout
-    #    SERVER_TOMCAT_KEEP_ALIVE_TIMEOUT:
-    #      configDataKey: serverTomcatKeepAliveTimeout
-    #    SERVER_TOMCAT_MAX_HTTP_FORM_POST_SIZE:
-    #      configDataKey: serverTomcatMaxHttpFormPostSize
-    #    OPENAPI_USERS:
-    #      configDataKey: openapiUsers
-    #    STORAGE_UPLOAD_MAX_CONCURRENCY:
-    #      configDataKey: storageUploadMaxConcurrency
-    #    STORAGE_FORBIDDEN_FILE_TYPES:
-    #      configDataKey: storageForbiddenFileTypes
-    #    SCHEDULER_UPLOAD_START_TIME:
-    #      configDataKey: schedulerUploadStartTime
-    #    SCHEDULER_UPLOAD_END_TIME:
-    #      configDataKey: schedulerUploadEndTime
-    #    BUYBOOST_OPENAPI_HOST:
-    #      configDataKey: buyboostOpenapiHost
-    BUYBOOST_OPENAPI_AK:
-      configDataKey: buyboostOpenapiAk
-    BUYBOOST_OPENAPI_SK:
-      configDataKey: buyboostOpenapiSk
-    #    HAIDP_OPENAPI_HOST:
-    #      configDataKey: haidpOpenapiHost
-    #    HAIDP_OPENAPI_CODE:
-    #      configDataKey: haidpOpenapiCode
-    #    HAIDP_OPENAPI_DESC:
-    #      configDataKey: haidpOpenapiDesc
-    HAIDP_OPENAPI_AK:
-      configDataKey: haidpOpenapiAk
-    HAIDP_OPENAPI_SK:
-      configDataKey: haidpOpenapiSk
-
-  # ---------------------------------------------------------------------------
-  # Config files mounted into the pod
-  # ---------------------------------------------------------------------------
-  # Each entry creates a ConfigMap/Secret + mount.
-  # Use `data` for literal block content, or `transform` to generate
-  # KEY=VALUE lines from configData references.
-  configFiles:
-    - name: "jul-logging-override"
-      mountPath: "/app/config"
-      subPath: "logging.properties"
-      type: configMap
-      data: |
-        handlers=java.util.logging.ConsoleHandler.level=INFO
-        java.util.logging.ConsoleHandler.level=INFO
-        java.util.logging.ConsoleHandler.formatter=java.util.logging.SimpleFormatter
-        java.util.logging.SimpleFormatter.format=%1$tF %1$tT.%1$tL %-7s [%7$s] %2$s - %5$s%n
-    - name: "logback-settings-override"
-      mountPath: "/app/etc"
-      subPath: "logback-spring.xml"
-      type: "configMap"
-      data: |
-        <configuration>
-
-          <!-- Unified log pattern -->
-          <property name="LOG_PATTERN"
-                    value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger - %msg%n"/>
-
-          <!-- Console only -->
-          <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
-            <encoder>
-              <pattern>${LOG_PATTERN}</pattern>
-            </encoder>
-          </appender>
-
-          <!-- Root logger -->
-          <root level="INFO">
-            <appender-ref ref="STDOUT"/>
-          </root>
-
-        </configuration>
-    - name: "application-properties-override"
-      mountPath: "/app/config"
-      subPath: "application.properties"
-      type: "configMap"
-      transform:
-        server.port:
-          configDataKey: serverPort
-        server.servlet.context.path:
-          configDataKey: serverServletContextPath
-        server.version:
-          configDataKey: serverVersion
-        server.tomcat.max-threads:
-          configDataKey: serverTomcatMaxThreads
-        server.tomcat.min-spare-threads:
-          configDataKey: serverTomcatMinSpareThreads
-        server.tomcat.max-connections:
-          configDataKey: serverTomcatMaxConnections
-        server.tomcat.accept-count:
-          configDataKey: serverTomcatAcceptCount
-        server.tomcat.connection-timeout:
-          configDataKey: serverTomcatConnectionTimeout
-        server.tomcat.keep-alive-timeout:
-          configDataKey: serverTomcatKeepAliveTimeout
-        server.tomcat.max-http-form-post-size:
-          configDataKey: serverTomcatMaxHttpFormPostSize
-        openapi.users:
-          configDataKey: openapiUsers
-        storage.upload.max.concurrency:
-          configDataKey: storageUploadMaxConcurrency
-        storage.forbidden.file.types:
-          configDataKey: storageForbiddenFileTypes
-        scheduler.upload.start_time:
-          configDataKey: schedulerUploadStartTime
-        scheduler.upload.end_time:
-          configDataKey: schedulerUploadEndTime
-        buyboost.openapi.host:
-          configDataKey: buyboostOpenapiHost
-        haidp.openapi.host:
-          configDataKey: haidpOpenapiHost
-        haidp.openapi.code:
-          configDataKey: haidpOpenapiCode
-        haidp.openapi.desc:
-          configDataKey: haidpOpenapiDesc
-
-
-  secretStores:
-    evsAksVault:
-      tenantId: "123123-some-id-123123"
-      vaultName: "evs-akv"
-      authSecretRef:
-        # points to the secret that contains
-        # the azure service principal credentials
-        clientId:
-          name: azure-secret-sp
-          key: ClientID
-        clientSecret:
-          name: azure-secret-sp
-          key: ClientSecret
-
-  externalSecrets:
-    buyboostSecrets: #name of the external secret
-      refreshInterval: 1h
-      secretStoreRef:
-        name: secret-store-name # this is the name of the secret store that was created by the admins.
-      target:
-        name: aksVault
-        creationPolicy: Owner
-      data:
-        - secretKey: DB_PASSWORD
-          remoteRef:
-            key: prod/db/password

@@ -4,6 +4,9 @@
   "type": "object",
   "required": [
     "project",
+    "configData",
+    "ports",
+    "services",
     "app"
   ],
   "additionalProperties": true,
@@ -128,7 +131,24 @@
           "pattern": "^[0-9]+$"
         },
         {
+          "$ref": "#/definitions/configDataRef"
+        },
+        {
           "$ref": "#/definitions/portDefinitionRef"
+        }
+      ]
+    },
+    "mapOrLiteralPortConfigOnly": {
+      "oneOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        {
+          "$ref": "#/definitions/configDataRef"
         }
       ]
     },
@@ -546,26 +566,91 @@
       },
       "additionalProperties": true
     },
-    "app": {
+    "configData": {
       "type": "object",
-      "required": [
-        "configData",
-        "image",
-        "ports",
-        "services",
-        "probeTypes",
-        "probes",
-        "env",
-        "networkPolicy"
-      ],
-      "properties": {
-        "configData": {
-          "type": "object",
-          "minProperties": 1,
-          "additionalProperties": {
-            "$ref": "#/definitions/configDataEntry"
+      "minProperties": 1,
+      "additionalProperties": {
+        "$ref": "#/definitions/configDataEntry"
+      }
+    },
+    "ports": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "port",
+          "name",
+          "protocol"
+        ],
+        "properties": {
+          "port": {
+            "$ref": "#/definitions/mapOrLiteralPortConfigOnly"
+          },
+          "name": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "string",
+            "enum": [
+              "TCP",
+              "UDP",
+              "SCTP"
+            ]
+          },
+          "description": {
+            "type": "string"
           }
         },
+        "additionalProperties": true
+      }
+    },
+    "services": {
+      "type": "object",
+      "properties": {
+        "clusterIp": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/serviceDefRoutable"
+          }
+        },
+        "nodePort": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/serviceDefRoutable"
+          }
+        },
+        "loadBalancer": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/serviceDefRoutable"
+          }
+        },
+        "externalName": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/serviceDefExternalName"
+          }
+        },
+        "headless": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/serviceDefHeadless"
+          }
+        },
+        "headles": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/serviceDefHeadless"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "app": {
+      "type": "object",
+      "required": [],
+      "properties": {
         "image": {
           "type": "object",
           "required": [
@@ -754,89 +839,11 @@
             "additionalProperties": true
           }
         },
-        "ports": {
-          "type": "object",
-          "minProperties": 1,
-          "additionalProperties": {
-            "type": "object",
-            "required": [
-              "port",
-              "name",
-              "protocol"
-            ],
-            "properties": {
-              "port": {
-                "$ref": "#/definitions/mapOrLiteralPortInt"
-              },
-              "name": {
-                "type": "string"
-              },
-              "protocol": {
-                "type": "string",
-                "enum": [
-                  "TCP",
-                  "UDP",
-                  "SCTP"
-                ]
-              },
-              "description": {
-                "type": "string"
-              },
-              "containerPort": {
-                "oneOf": [
-                  {
-                    "type": "boolean"
-                  },
-                  {
-                    "type": "string"
-                  }
-                ]
-              }
-            },
-            "additionalProperties": true
+        "containerPorts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/portLookupRef"
           }
-        },
-        "services": {
-          "type": "object",
-          "properties": {
-            "clusterIp": {
-              "type": "object",
-              "additionalProperties": {
-                "$ref": "#/definitions/serviceDefRoutable"
-              }
-            },
-            "nodePort": {
-              "type": "object",
-              "additionalProperties": {
-                "$ref": "#/definitions/serviceDefRoutable"
-              }
-            },
-            "loadBalancer": {
-              "type": "object",
-              "additionalProperties": {
-                "$ref": "#/definitions/serviceDefRoutable"
-              }
-            },
-            "externalName": {
-              "type": "object",
-              "additionalProperties": {
-                "$ref": "#/definitions/serviceDefExternalName"
-              }
-            },
-            "headless": {
-              "type": "object",
-              "additionalProperties": {
-                "$ref": "#/definitions/serviceDefHeadless"
-              }
-            },
-            "headles": {
-              "type": "object",
-              "additionalProperties": {
-                "$ref": "#/definitions/serviceDefHeadless"
-              }
-            }
-          },
-          "additionalProperties": false
         },
         "probeTypes": {
           "type": "object",
