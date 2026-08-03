@@ -596,12 +596,12 @@ app:
             ip:
               configDataKey: buyboostOpenapiHost.host
             port:
-              portDefinitionKey: buyboostOpenapiHost.port
+              configDataKey: buyboostOpenapiHost.port
           - name: haidp
             ip:
               configDataKey: haidpOpenapiHost.host
             port:
-              portDefinitionKey: haidpOpenapiHost.port
+              configDataKey: haidpOpenapiHost.port
 
     # ---------------------------------------------------------------------------
     # Environment variables

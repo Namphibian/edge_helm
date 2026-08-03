@@ -26,6 +26,21 @@
       },
       "additionalProperties": false
     },
+    "egressPortRef": {
+      "type": "object",
+      "required": [
+        "configDataKey"
+      ],
+      "properties": {
+        "configDataKey": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]*\\.port$",
+          "description": "Must reference the .port sub-field of a url-type configData entry (e.g. buyboostOpenapiHost.port)"
+        }
+      },
+      "additionalProperties": false
+    },
     "portDefinitionRef": {
       "type": "object",
       "required": [
@@ -1013,7 +1028,7 @@
                         "$ref": "#/definitions/ipOrRef"
                       },
                       "port": {
-                        "$ref": "#/definitions/portOrRef"
+                        "$ref": "#/definitions/egressPortRef"
                       }
                     },
                     "additionalProperties": true

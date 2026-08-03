@@ -54,12 +54,23 @@ spec:
   policyTypes:
     - Egress
   egress:
-    {{- range .egress.allowedHosts }}
+    {{ range .egress.allowedHosts }}
+    {{- $egName := default "<unnamed>" .name -}}
+    {{- if not (kindIs "map" .port) -}}
+      {{- fail (printf "networkpolicy egress %s port must be a map with configDataKey to a url-type configData entry (e.g. buyboostOpenapiHost.port)" $egName) -}}
+    {{- end -}}
+    {{- if not (hasKey .port "configDataKey") -}}
+      {{- fail (printf "networkpolicy egress %s port must use configDataKey (portDefinitionKey is not allowed)" $egName) -}}
+    {{- end -}}
+    {{- $er := include "app.resolveConfigDataEntry" (list (index .port "configDataKey") $root.Values.configData (printf "networkpolicy egress %s port" $egName)) | fromJson -}}
+    {{- if ne $er.type "url" -}}
+      {{- fail (printf "networkpolicy egress %s port configDataKey %q must reference a configData entry with type 'url'" $egName $er.cfgKey) -}}
+    {{- end -}}
     - to:
         - ipBlock:
             cidr: {{ include "app.configValue" (list .ip $root.Values.configData (printf "networkpolicy egress %s ip" .name)) }}/32
       ports:
         - protocol: TCP
           port: {{ include "app.resolvePort" (list .port $root.Values.configData (printf "networkpolicy egress %s port" .name)) }}
-    {{- end }}
+    {{ end }}
 {{- end }}
