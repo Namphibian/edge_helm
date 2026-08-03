@@ -354,7 +354,7 @@ app:
   # Resource requests / limits with QoS support
   # ---------------------------------------------------------------------------
   resources:
-    qos: "Guaranteed"
+    qos: "BestEffort"
     requests:
       memory: "6Gi"
       cpu: "750"
@@ -374,7 +374,7 @@ app:
         retention: 7
       storageClass: "crc-csi-hostpath-provisioner"
       accessMode: ReadWriteOnce
-      size: 20Gi
+      size: 1Gi
       name: evs-storage
       mountPath: /app/storage
 
@@ -386,7 +386,7 @@ app:
       port:
         portDefinitionKey: serverPort
       name: "http-tomcat"
-      protocol: UDP
+      protocol: TCP
       description: "Port used by the application to run the server aka listening port."
       containerPort: "true"
 
@@ -396,12 +396,12 @@ app:
       name: "tcp-prom"
       protocol: TCP
       description: "Used to configure the prometheus port for scraping"
-
-    dnsPort:
-      port: 53
-      name: "dns"
-      protocol: UDP
-      description: "DNS port for internal service discovery"
+  #
+  #    dnsPort:
+  #      port: 53
+  #      name: "dns"
+  #      protocol: UDP
+  #      description: "DNS port for internal service discovery"
 
   # ---------------------------------------------------------------------------
   # Services (map-based schema by service category)
@@ -420,59 +420,80 @@ app:
     clusterIp:
       api:
         description: "This service hosts the API ports so that we can expose it to the world"
-        exposedRoute: true
-        annotations:
-          - prometheus
-          - istio
-        ports:
-          - sourcePort:
-              portDefinitionKey: serverPort
-            targetPort:
-              portDefinitionKey: serverPort
-          - sourcePort:
-              portDefinitionKey: prometheusPort
-            targetPort:
-              portDefinitionKey: prometheusPort
-
-    nodePort:
-      dns:
-        description: "This service hosts the DNS ports so that we can expose it to the world"
         exposedRoute: false
+        #        exposeAsRoute:
+        #          enabled: true
+        #          annotations: []
         annotations:
           - prometheus
           - istio
         ports:
           - sourcePort:
-              portDefinitionKey: dnsPort
+              portDefinitionKey: serverPort
             targetPort:
-              portDefinitionKey: dnsPort
-
-    loadBalancer:
-      prometheus:
-        description: "This service hosts the Prometheus ports so that we can expose it to the world"
-        exposedRoute: true
+              portDefinitionKey: serverPort
+          - sourcePort:
+              portDefinitionKey: prometheusPort
+            targetPort:
+              portDefinitionKey: prometheusPort
+      foo:
+        description: "This service hosts the API ports so that we can expose it to the world"
+        exposedRoute: false
+        #        exposeAsRoute:
+        #          enabled: true
+        #          annotations: []
         annotations:
           - prometheus
           - istio
         ports:
           - sourcePort:
-              portDefinitionKey: prometheusPort
+              portDefinitionKey: serverPort
             targetPort:
-              portDefinitionKey: prometheusPort
-
-    externalName:
-      mysql-dev:
-        description: "This is an external name service that points to the mysql-dev service in the dev namespace"
-        externalName: "mysql-dev.dev.svc.cluster.local"
-
-    headless:
-      evs-storage:
-        description: "This is a headless service that points to the evs-storage service in the dev namespace"
-        ports:
+              portDefinitionKey: serverPort
           - sourcePort:
-              portDefinitionKey: serverPort
+              portDefinitionKey: prometheusPort
             targetPort:
-              portDefinitionKey: serverPort
+              portDefinitionKey: prometheusPort
+
+  #    nodePort:
+  #      dns:
+  #        description: "This service hosts the DNS ports so that we can expose it to the world"
+  #        exposedRoute: false
+  #        annotations:
+  #          - prometheus
+  #          - istio
+  #        ports:
+  #          - sourcePort:
+  #              portDefinitionKey: dnsPort
+  #            targetPort:
+  #              portDefinitionKey: dnsPort
+
+  #    loadBalancer:
+  #      prometheus:
+  #        description: "This service hosts the Prometheus ports so that we can expose it to the world"
+  #        exposedRoute: true
+  #        annotations:
+  #          - prometheus
+  #          - istio
+  #        ports:
+  #          - sourcePort:
+  #              portDefinitionKey: prometheusPort
+  #            targetPort:
+  #              portDefinitionKey: prometheusPort
+
+  #    externalName:
+  #      mysql-dev:
+  #        description: "This is an external name service that points to the mysql-dev service in the dev namespace"
+  #        externalName: "mysql-dev.dev.svc.cluster.local"
+
+  #    headless:
+  #      evs-storage:
+  #        description: "This is a headless service that points to the evs-storage service in the dev namespace"
+  #        ports:
+  #          - sourcePort:
+  #              portDefinitionKey: serverPort
+  #            targetPort:
+  #              portDefinitionKey: serverPort
 
   # ---------------------------------------------------------------------------
   # Health probe types (shared probe definitions)
@@ -480,7 +501,7 @@ app:
   # Define probe templates once, then choose one by name per liveness/readiness.
   probeTypes:
     httpGet:
-      path: /actuator/health
+      path: /evs
       port:
         portDefinitionKey: serverPort
 
@@ -496,18 +517,21 @@ app:
   # ---------------------------------------------------------------------------
   probes:
     liveness:
-      probeType: tcpSocket
+      probeType: exec
       initialDelaySeconds: 60
       periodSeconds: 10
       timeoutSeconds: 5
       failureThreshold: 3
 
     readiness:
-      probeType: httpGet
+      probeType: tcpSocket
       initialDelaySeconds: 30
       periodSeconds: 10
       timeoutSeconds: 5
       failureThreshold: 3
+
+    # To Be Added.
+    # Start up probe.
 
   # ---------------------------------------------------------------------------
   # Network policies
@@ -538,55 +562,52 @@ app:
   # Environment variables
   # ---------------------------------------------------------------------------
   env:
-    LOGGING_CONFIG: "/app/logback-spring.xml"
-
-    SERVER_PORT:
-      configDataKey: serverPort
-    SERVER_SERVLET_CONTEXT_PATH:
-      configDataKey: serverServletContextPath
-    SERVER_VERSION:
-      configDataKey: serverVersion
-
-    SERVER_TOMCAT_MAX_THREADS:
-      configDataKey: serverTomcatMaxThreads
-    SERVER_TOMCAT_MIN_SPARE_THREADS:
-      configDataKey: serverTomcatMinSpareThreads
-    SERVER_TOMCAT_MAX_CONNECTIONS:
-      configDataKey: serverTomcatMaxConnections
-    SERVER_TOMCAT_ACCEPT_COUNT:
-      configDataKey: serverTomcatAcceptCount
-    SERVER_TOMCAT_CONNECTION_TIMEOUT:
-      configDataKey: serverTomcatConnectionTimeout
-    SERVER_TOMCAT_KEEP_ALIVE_TIMEOUT:
-      configDataKey: serverTomcatKeepAliveTimeout
-    SERVER_TOMCAT_MAX_HTTP_FORM_POST_SIZE:
-      configDataKey: serverTomcatMaxHttpFormPostSize
-
-    OPENAPI_USERS:
-      configDataKey: openapiUsers
-
-    STORAGE_UPLOAD_MAX_CONCURRENCY:
-      configDataKey: storageUploadMaxConcurrency
-    STORAGE_FORBIDDEN_FILE_TYPES:
-      configDataKey: storageForbiddenFileTypes
-    SCHEDULER_UPLOAD_START_TIME:
-      configDataKey: schedulerUploadStartTime
-    SCHEDULER_UPLOAD_END_TIME:
-      configDataKey: schedulerUploadEndTime
-
-    BUYBOOST_OPENAPI_HOST:
-      configDataKey: buyboostOpenapiHost
+    LOGGING_CONFIG: "/app/etc/logback-spring.xml"
+    SPRING_MAIN_BANNER_MODE: 'off'
+    SPRING_CONFIG_ADDITIONAL_LOCATIONS: "/app/config/secrets"
+    JAVA_UTIL_LOGGING_CONFIG_FILE: "/app/config/logging.properties"
+    #    SERVER_PORT:
+    #      configDataKey: serverPort
+    #    SERVER_SERVLET_CONTEXT_PATH:
+    #      configDataKey: serverServletContextPath
+    #    SERVER_VERSION:
+    #      configDataKey: serverVersion
+    #    SERVER_TOMCAT_MAX_THREADS:
+    #      configDataKey: serverTomcatMaxThreads
+    #    SERVER_TOMCAT_MIN_SPARE_THREADS:
+    #      configDataKey: serverTomcatMinSpareThreads
+    #    SERVER_TOMCAT_MAX_CONNECTIONS:
+    #      configDataKey: serverTomcatMaxConnections
+    #    SERVER_TOMCAT_ACCEPT_COUNT:
+    #      configDataKey: serverTomcatAcceptCount
+    #    SERVER_TOMCAT_CONNECTION_TIMEOUT:
+    #      configDataKey: serverTomcatConnectionTimeout
+    #    SERVER_TOMCAT_KEEP_ALIVE_TIMEOUT:
+    #      configDataKey: serverTomcatKeepAliveTimeout
+    #    SERVER_TOMCAT_MAX_HTTP_FORM_POST_SIZE:
+    #      configDataKey: serverTomcatMaxHttpFormPostSize
+    #    OPENAPI_USERS:
+    #      configDataKey: openapiUsers
+    #    STORAGE_UPLOAD_MAX_CONCURRENCY:
+    #      configDataKey: storageUploadMaxConcurrency
+    #    STORAGE_FORBIDDEN_FILE_TYPES:
+    #      configDataKey: storageForbiddenFileTypes
+    #    SCHEDULER_UPLOAD_START_TIME:
+    #      configDataKey: schedulerUploadStartTime
+    #    SCHEDULER_UPLOAD_END_TIME:
+    #      configDataKey: schedulerUploadEndTime
+    #    BUYBOOST_OPENAPI_HOST:
+    #      configDataKey: buyboostOpenapiHost
     BUYBOOST_OPENAPI_AK:
       configDataKey: buyboostOpenapiAk
     BUYBOOST_OPENAPI_SK:
       configDataKey: buyboostOpenapiSk
-
-    HAIDP_OPENAPI_HOST:
-      configDataKey: haidpOpenapiHost
-    HAIDP_OPENAPI_CODE:
-      configDataKey: haidpOpenapiCode
-    HAIDP_OPENAPI_DESC:
-      configDataKey: haidpOpenapiDesc
+    #    HAIDP_OPENAPI_HOST:
+    #      configDataKey: haidpOpenapiHost
+    #    HAIDP_OPENAPI_CODE:
+    #      configDataKey: haidpOpenapiCode
+    #    HAIDP_OPENAPI_DESC:
+    #      configDataKey: haidpOpenapiDesc
     HAIDP_OPENAPI_AK:
       configDataKey: haidpOpenapiAk
     HAIDP_OPENAPI_SK:
@@ -632,7 +653,6 @@ app:
           </root>
 
         </configuration>
-
     - name: "application-properties-override"
       mountPath: "/app/config"
       subPath: "application.properties"
@@ -664,9 +684,9 @@ app:
           configDataKey: storageUploadMaxConcurrency
         storage.forbidden.file.types:
           configDataKey: storageForbiddenFileTypes
-        scheduler.upload.start.time:
+        scheduler.upload.start_time:
           configDataKey: schedulerUploadStartTime
-        scheduler.upload.end.time:
+        scheduler.upload.end_time:
           configDataKey: schedulerUploadEndTime
         buyboost.openapi.host:
           configDataKey: buyboostOpenapiHost
@@ -677,32 +697,21 @@ app:
         haidp.openapi.desc:
           configDataKey: haidpOpenapiDesc
 
-    - name: "application-secrets-override"
-      mountPath: "/app/config/secrets"
-      subPath: "application.properties"
-      type: "secret"
-      transform:
-        buyboost.openapi.ak:
-          configDataKey: buyboostOpenapiAk
-        buyboost.openapi.sk:
-          configDataKey: buyboostOpenapiSk
-        haidp.openapi.ak:
-          configDataKey: haidpOpenapiAk
-        haidp.openapi.sk:
-          configDataKey: haidpOpenapiSk
 
   secretStores:
-    aksVault:
-      provider:
-        azurekv:
-          tenantId: "your-tenant-id"
-          clientId: "your-client-id"
-          clientSecret:
-            valueFrom:
-              secretKeyRef:
-                name: azure-client-secret
-                key: client-secret
-          vaultUrl: "https://your-vault-name.vault.azure.net/"
+    evsAksVault:
+      tenantId: "123123-some-id-123123"
+      vaultName: "evs-akv"
+      authSecretRef:
+        # points to the secret that contains
+        # the azure service principal credentials
+        clientId:
+          name: azure-secret-sp
+          key: ClientID
+        clientSecret:
+          name: azure-secret-sp
+          key: ClientSecret
+
   externalSecrets:
     buyboostSecrets: #name of the external secret
       refreshInterval: 1h
