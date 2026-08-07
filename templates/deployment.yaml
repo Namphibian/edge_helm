@@ -27,7 +27,7 @@ spec:
       labels:
         {{- include "app.selectorLabels" (list $root $appName) | nindent 8 }}
     spec:
-      serviceAccountName: {{ include "app.fullname" $root }}-svc
+      serviceAccountName: {{ include "app.fullname" $root }}-{{ include "app.kebab" $appName | trim }}-svc
       {{- with $app.image.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
@@ -151,11 +151,11 @@ spec:
         {{- if or (gt (len $pmap) 0) (gt (len $fmap) 0) }}
         volumeMounts:
         {{- range $vname, $vcfg := $pmap }}
-          - name: '{{ printf "%s-%s" (trim (include "app.fullname" $root)) (trim (include "app.kebab" $vname)) }}'
+          - name: '{{ printf "%s-%s-%s" (trim (include "app.fullname" $root)) (trim (include "app.kebab" $vname)) (trim (include "app.kebab" $appName | trim)) }}'
             mountPath: {{ $vcfg.mountPath }}
         {{- end }}
         {{- range $idx, $fcfg := $fmap }}
-          - name: '{{ include "app.fileResourceName" (list $root $fcfg ) }}'
+          - name: '{{ printf "%s-%s" (trim (include "app.fileResourceName" (list $root $fcfg))) (trim (include "app.kebab" $appName | trim)) }}'
             {{- if $fcfg.subPath }}
             mountPath: '{{ printf "%s/%s" (trimSuffix "/" $fcfg.mountPath) $fcfg.subPath }}'
             subPath: '{{ $fcfg.subPath }}'
@@ -168,21 +168,21 @@ spec:
       {{- if or (gt (len $pmap) 0) (gt (len $fmap) 0) }}
       volumes:
         {{- range $vname, $vcfg := $pmap }}
-        - name: '{{ printf "%s-%s" (trim (include "app.fullname" $root)) (trim (include "app.kebab" $vname)) }}'
+        - name: '{{ printf "%s-%s-%s" (trim (include "app.fullname" $root)) (trim (include "app.kebab" $vname)) (trim (include "app.kebab" $appName | trim)) }}'
           persistentVolumeClaim:
-            claimName: '{{ default (printf "%s-%s" (trim (include "app.fullname" $root)) (trim (include "app.kebab" $vname))) $vcfg.claimName }}'
+            claimName: '{{ default (printf "%s-%s-%s" (trim (include "app.fullname" $root)) (trim (include "app.kebab" $vname)) (trim (include "app.kebab" $appName | trim))) $vcfg.claimName }}'
         {{- end }}
         {{- range $idx, $fcfg := $fmap }}
-        - name: '{{ include "app.fileResourceName" (list $root $fcfg) }}'
+        - name: '{{ printf "%s-%s" (trim (include "app.fileResourceName" (list $root $fcfg))) (trim (include "app.kebab" $appName | trim)) }}'
           {{- if eq (lower (default "configmap" $fcfg.type)) "secret" }}
           secret:
-            secretName: '{{ include "app.fileResourceName" (list $root $fcfg) }}'
+            secretName: '{{ printf "%s-%s" (trim (include "app.fileResourceName" (list $root $fcfg))) (trim (include "app.kebab" $appName | trim)) }}'
             items:
               - key: '{{ default "content" $fcfg.subPath }}'
                 path: '{{ default "content" $fcfg.subPath }}'
           {{- else }}
           configMap:
-            name: '{{ include "app.fileResourceName" (list $root $fcfg) }}'
+            name: '{{ printf "%s-%s" (trim (include "app.fileResourceName" (list $root $fcfg))) (trim (include "app.kebab" $appName | trim)) }}'
             items:
               - key: '{{ default "content" $fcfg.subPath }}'
                 path: '{{ default "content" $fcfg.subPath }}'

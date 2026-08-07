@@ -1,16 +1,15 @@
 {{- $root := . -}}
-{{- $appName := first (keys $root.Values.app | sortAlpha) -}}
-{{- $app := index $root.Values.app $appName -}}
+{{- range $appName, $app := $root.Values.app }}
 {{- range $name, $cfg := $app.persistence }}
 {{- if and $cfg.backup $cfg.backup.enabled }}
 ---
 apiVersion: config.kio.kasten.io/v1alpha1
 kind: Policy
 metadata:
-  name: {{ include "app.fullname" $root }}-{{ (trim (include "app.kebab" $name)) }}-backup
+  name: {{ include "app.fullname" $root }}-{{ (trim (include "app.kebab" $appName)) }}-{{ (trim (include "app.kebab" $name)) }}-backup
   namespace: {{ $root.Release.Namespace }}
   labels:
-    {{- include "app.labels" $root | nindent 4 }}
+    {{- include "app.labels" (list $root $appName) | nindent 4 }}
   {{- if $cfg.backup.annotations }}
   annotations:
     {{- include "annotationsSets" (list $cfg.backup.annotations $root $app.annotationSets) | trim | nindent 4 }}
@@ -22,8 +21,9 @@ spec:
     daily: {{ $cfg.backup.retention | default 7 }}
   selector:
     matchLabels:
-      {{- include "app.selectorLabels" $root | nindent 6 }}
+      {{- include "app.selectorLabels" (list $root $appName) | nindent 6 }}
   actions:
     - action: backup
+{{- end }}
 {{- end }}
 {{- end }}

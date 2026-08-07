@@ -13,42 +13,16 @@ Helm chart for deploying EVS (Edge Video/Event Storage) on Kubernetes/OpenShift.
 
 ## Current Values Model
 
-The chart now uses these top-level keys:
+The chart uses these top-level keys:
 
-- `project` - namespace/project metadata and quota
-- `configData` - shared typed configuration entries
-- `ports` - reusable port definitions
-- `services` - service definitions by service type group
-- `app` - map of app definitions (multi-app model)
-- `secretStores` - External Secrets SecretStore resources
-- `externalSecrets` - ExternalSecret resources
-
-## Multi-App Structure (Important)
-
-`app` is a map of maps:
-
-```yaml
-app:
-  app-name1:
-    # app definition elements
-    image:
-      repository: your.registry/app1
-      tag: dev
-      pullPolicy: IfNotPresent
-    replicaCount: 1
-    env:
-      SPRING_MAIN_BANNER_MODE: "off"
-
-  app-name2:
-    # app definition elements
-    image:
-      repository: your.registry/app2
-      tag: dev
-      pullPolicy: IfNotPresent
-    replicaCount: 2
-```
-
-Each app entry can define its own deployment-centric config (`image`, `env`, `resources`, `probeTypes`, `probes`, `persistence`, `configFiles`, `containerPorts`, etc.).
+- `project` — namespace/project metadata and quota
+- `configData` — shared typed configuration entries
+- `annotationSets` — reusable named annotation groups
+- `ports` — reusable port definitions
+- `services` — service definitions by service type group
+- `app` — map of app definitions (multi-app model)
+- `secretStores` — External Secrets SecretStore resources
+- `externalSecrets` — ExternalSecret resources
 
 ## `configData` and `configDataKey`
 
@@ -62,15 +36,34 @@ configData:
     type: "int"
 ```
 
-Any app field can reference them using:
+Each entry follows the schema `{ description, value, type }` with an optional `joinChar` for list-type values.
+
+Any field elsewhere in the chart can reference a `configData` entry using:
 
 ```yaml
 configDataKey: serverPort
 ```
 
+## Top-Level `annotationSets`
+
+Named annotation groups are defined at the top level and referenced by name in services and other resources:
+
+```yaml
+annotationSets:
+  prometheus:
+    prometheus.io/scrape: "true"
+    prometheus.io/port:
+      configDataKey: prometheusPort
+
+  awsInternal:
+    service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+```
+
+Annotation values can be literals or `configDataKey` references.
+
 ## Top-Level `ports`
 
-Port definitions are top-level and reusable across services/probes/container port mapping:
+Port definitions are top-level and reusable across services, probes, and container port mapping:
 
 ```yaml
 ports:
@@ -79,6 +72,7 @@ ports:
       configDataKey: serverPort
     name: "http-tomcat"
     protocol: TCP
+    description: "Port used by the application to run the server"
 ```
 
 ## Top-Level `services`
@@ -89,9 +83,28 @@ Services are top-level and grouped by type (`clusterIp`, `nodePort`, `loadBalanc
 services:
   clusterIp:
     api:
+      description: "API service"
       exposedRoute: false
+      targetApps:
+        - evxcs
+        - abc
       annotations:
         - prometheus
+        - istio
+      ports:
+        - sourcePort:
+            portDefinitionKey: serverPort
+          targetPort:
+            portDefinitionKey: serverPort
+
+  externalName:
+    mysql-dev:
+      description: "External MySQL service"
+      externalName: "mysql-dev.dev.svc.cluster.local"
+
+  headless:
+    evs-storage:
+      description: "Headless storage service"
       ports:
         - sourcePort:
             portDefinitionKey: serverPort
@@ -99,13 +112,76 @@ services:
             portDefinitionKey: serverPort
 ```
 
-## App Container Ports
+- `targetApps` is required for `clusterIp`, `nodePort`, and `loadBalancer` services. Each entry renders one Service per target app.
+- `annotations` is a list of `annotationSets` names to merge onto the Service.
+- `externalName` services only need `externalName` (no ports or targetApps).
+- `headless` services render as `ClusterIP` with `clusterIP: None`.
 
-Container ports are no longer a boolean on `ports.*`. Define them per app:
+## Routes
+
+Routes are generated from top-level `services` entries where `exposedRoute: true`.
+No routes are rendered when none are explicitly exposed.
+
+## Multi-App Structure
+
+`app` is a map of maps. Each key renders a separate Deployment:
 
 ```yaml
 app:
-  evs:
+  evxcs:
+    image:
+      repository: your.registry/app1
+      tag: dev
+      pullPolicy: IfNotPresent
+      imagePullSecrets:
+        - name: my-secret
+    replicaCount: 1
+    serviceAccount:
+      create: true
+      annotations: []
+    deployment:
+      annotations: []
+    route:
+      annotations: []
+    resources:
+      qos: "BestEffort"    # Guaranteed | Burstable | BestEffort
+      requests:
+        memory: "6Gi"
+        cpu: "750"
+      limits:
+        memory: "8Gi"
+        cpu: "1000"
+    env:
+      SPRING_MAIN_BANNER_MODE: "off"
+      BUYBOOST_OPENAPI_AK:
+        configDataKey: buyboostOpenapiAk
+```
+
+Each app entry can define:
+
+| Key | Purpose |
+|-----|---------|
+| `image` | Container image (repository, tag, pullPolicy, imagePullSecrets) |
+| `replicaCount` | Number of replicas |
+| `serviceAccount` | Per-app ServiceAccount creation and annotations |
+| `deployment` | Deployment-level annotations |
+| `route` | Route-level annotations |
+| `resources` | CPU/memory requests and limits with QoS mode |
+| `env` | Environment variables (literal or `configDataKey` references) |
+| `containerPorts` | List of `portDefinitionKey` references for container ports |
+| `probeTypes` | Reusable probe definitions (httpGet, tcpSocket, exec) |
+| `probes` | Liveness/readiness probe selectors and timing |
+| `persistence` | Named persistent volumes with backup support |
+| `networkPolicy` | Per-app ingress/egress network policy rules |
+| `configFiles` | ConfigMap/Secret files mounted into the pod |
+
+## App Container Ports
+
+Container ports are defined per app as a list of port definition references:
+
+```yaml
+app:
+  evxcs:
     containerPorts:
       - portDefinitionKey: serverPort
 ```
@@ -118,8 +194,12 @@ Probe behavior uses reusable `probeTypes` plus selectors in `probes`:
 
 ```yaml
 app:
-  evs:
+  evxcs:
     probeTypes:
+      httpGet:
+        path: /evs
+        port:
+          portDefinitionKey: serverPort
       tcpSocket:
         port:
           portDefinitionKey: serverPort
@@ -141,10 +221,107 @@ app:
         failureThreshold: 3
 ```
 
-## Routes
+## App Network Policy
 
-Routes are generated from top-level `services` entries where `exposedRoute: true`.
-No routes are rendered when none are explicitly exposed.
+Each app can define its own ingress and egress network policy rules:
+
+```yaml
+app:
+  evxcs:
+    networkPolicy:
+      ingress:
+        allowedSources:
+          - type: podSelector
+            matchLabels:
+              app.kubernetes.io/name: evs
+        ports:
+          - serverPort
+      egress:
+        allowedHosts:
+          - name: buyboost
+            ip:
+              configDataKey: buyboostOpenapiHost.host
+            port:
+              configDataKey: buyboostOpenapiHost.port
+```
+
+## App Config Files
+
+Config files are mounted into the pod as ConfigMaps or Secrets. Use `data` for literal content or `transform` to generate key-value lines from `configData` references:
+
+```yaml
+app:
+  evxcs:
+    configFiles:
+      - name: "jul-logging-override"
+        mountPath: "/app/config"
+        subPath: "logging.properties"
+        type: configMap
+        data: |
+          handlers=java.util.logging.ConsoleHandler.level=INFO
+
+      - name: "application-properties-override"
+        mountPath: "/app/config"
+        subPath: "application.properties"
+        type: configMap
+        transform:
+          server.port:
+            configDataKey: serverPort
+          server.servlet.context.path:
+            configDataKey: serverServletContextPath
+```
+
+## App Persistence
+
+Persistent volumes are defined per app with optional backup support:
+
+```yaml
+app:
+  evxcs:
+    persistence:
+      dataVolume:
+        storageClass: "crc-csi-hostpath-provisioner"
+        accessMode: ReadWriteOnce
+        size: 1Gi
+        name: evs-storage
+        mountPath: /app/storage
+        annotations: []
+        backup:
+          enabled: true
+          frequency: "@daily"
+          retention: 7
+          annotations: []
+```
+
+## Secret Stores and External Secrets
+
+```yaml
+secretStores:
+  evsAksVault:
+    tenantId: "123123-some-id-123123"
+    vaultName: "evs-akv"
+    authSecretRef:
+      clientId:
+        name: azure-secret-sp
+        key: ClientID
+      clientSecret:
+        name: azure-secret-sp
+        key: ClientSecret
+
+externalSecrets:
+  buyboostSecrets:
+    refreshInterval: 1h
+    secretStoreRef:
+      name: secret-store-name
+      kind: SecretStore
+    target:
+      name: aksVault
+      creationPolicy: Owner
+    data:
+      - secretKey: DB_PASSWORD
+        remoteRef:
+          key: prod/db/password
+```
 
 ## Quick Start
 
@@ -162,11 +339,12 @@ helm template my-release . --show-only templates/deployment.yaml
 helm template my-release . --set configData.serverPort.value=9090
 
 # Override app-specific value
-helm template my-release . --set app.evs.resources.qos=BestEffort
+helm template my-release . --set app.evxcs.resources.qos=BestEffort
 ```
 
 ## Notes
 
-- `ports` and `services` are intentionally top-level shared definitions.
-- `app` is the multi-app deployment map.
+- `configData`, `annotationSets`, `ports`, and `services` are intentionally top-level shared definitions.
+- `app` is the multi-app deployment map — each key renders a separate Deployment.
+- Services reference apps via `targetApps`; one Service resource is rendered per target app.
 - If you add a new app key under `app`, a separate Deployment is rendered for it.

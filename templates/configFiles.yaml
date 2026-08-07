@@ -1,6 +1,5 @@
 {{- $root := . -}}
-{{- $appName := first (keys $root.Values.app | sortAlpha) -}}
-{{- $app := index $root.Values.app $appName -}}
+{{- range $appName, $app := $root.Values.app }}
 {{- $files := $app.configFiles | default (list) -}}
 {{- range $idx, $f := $files }}
 {{- /* ---- validation ---- */}}
@@ -29,7 +28,7 @@
 {{- else -}}
 {{- $content = trim $f.data -}}
 {{- end -}}
-{{- $name := include "app.fileResourceName" (list $root $f) -}}
+{{- $name := printf "%s-%s" (trim (include "app.fileResourceName" (list $root $f))) (trim (include "app.kebab" $appName | trim)) -}}
 {{- $key := default "content" $f.subPath -}}
 ---
 apiVersion: v1
@@ -38,7 +37,7 @@ metadata:
   name: {{ $name }}
   namespace: {{ $root.Release.Namespace }}
   labels:
-    {{- include "app.labels" $root | nindent 4 }}
+    {{- include "app.labels" (list $root $appName) | nindent 4 }}
 {{- if eq $type "secret" }}
 type: Opaque
 stringData:
@@ -48,5 +47,6 @@ stringData:
 data:
   {{ $key }}: |
 {{ $content | nindent 4 }}
+{{ end }}
 {{ end }}
 {{ end }}

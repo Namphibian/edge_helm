@@ -1,15 +1,14 @@
 {{- $root := . -}}
-{{- $appName := first (keys $root.Values.app | sortAlpha) -}}
-{{- $app := index $root.Values.app $appName -}}
+{{- range $appName, $app := $root.Values.app }}
 {{- with $app.networkPolicy }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "app.fullname" $root }}-ingress
+  name: {{ include "app.fullname" $root }}-{{ include "app.kebab" $appName | trim }}-ingress
   namespace: {{ $root.Release.Namespace }}
   labels:
-    {{- include "app.labels" $root | nindent 4 }}
+    {{- include "app.labels" (list $root $appName) | nindent 4 }}
   {{- if .ingress.annotations }}
   annotations:
     {{- include "annotationsSets" (list .ingress.annotations $root) | trim | nindent 4 }}
@@ -17,7 +16,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      {{- include "app.selectorLabels" $root | nindent 6 }}
+      {{- include "app.selectorLabels" (list $root $appName) | nindent 6 }}
   policyTypes:
     - Ingress
   ingress:
@@ -39,10 +38,10 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "app.fullname" $root }}-egress
+  name: {{ include "app.fullname" $root }}-{{ include "app.kebab" $appName | trim }}-egress
   namespace: {{ $root.Release.Namespace }}
   labels:
-    {{- include "app.labels" $root | nindent 4 }}
+    {{- include "app.labels" (list $root $appName) | nindent 4 }}
   {{- if .egress.annotations }}
   annotations:
     {{- include "annotationsSets" (list .egress.annotations $root) | trim | nindent 4 }}
@@ -50,7 +49,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      {{- include "app.selectorLabels" $root | nindent 6 }}
+      {{- include "app.selectorLabels" (list $root $appName) | nindent 6 }}
   policyTypes:
     - Egress
   egress:
@@ -73,4 +72,5 @@ spec:
         - protocol: TCP
           port: {{ include "app.resolvePort" (list .port $root.Values.configData (printf "networkpolicy egress %s port" .name)) }}
     {{ end }}
+{{- end }}
 {{- end }}

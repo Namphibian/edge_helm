@@ -4,20 +4,119 @@ Namespace: {{ .Release.Namespace }}
 Chart: {{ .Chart.Name }} {{ .Chart.Version }}
 App Version: {{ .Chart.AppVersion }}
 
-Useful commands:
+=== Cluster-wide Resources ===
+
+Project (OpenShift):
+  Name: {{ .Values.project.name }}
+  Display: {{ .Values.project.displayName }}
+
+{{- if .Values.project.quota.enabled }}
+ResourceQuota:
+  Name: {{ include "app.fullname" . }}-quota
+  Limits:
+  {{- range $k, $v := .Values.project.quota.hard }}
+    {{ $k }}: {{ $v }}
+  {{- end }}
+{{- end }}
+
+RBAC:
+  Role: {{ include "app.fullname" . }}-min-ro-role (read-only pods/services/endpoints/configmaps/secrets/events)
+  RoleBinding: {{ include "app.fullname" . }}-min-ro-role-binding
+
+{{- if .Values.secretStores }}
+SecretStores (External Secrets Operator):
+{{- range $name, $cfg := .Values.secretStores }}
+  - {{ include "app.fullname" $ }}-{{ trim (include "app.kebab" $name) }} (Azure KeyVault: {{ $cfg.vaultName }})
+{{- end }}
+{{- end }}
+
+{{- if .Values.externalSecrets }}
+ExternalSecrets:
+{{- range $name, $cfg := .Values.externalSecrets }}
+  - {{ include "app.fullname" $ }}-{{ trim (include "app.kebab" $name) }} → target secret: {{ $cfg.target.name }}
+{{- end }}
+{{- end }}
+
+=== Per-Application Resources ===
+{{- range $appName, $app := .Values.app }}
+
+--- {{ $appName }} ---
+  Deployment: {{ include "app.fullname" $ }}-{{ include "app.kebab" $appName | trim }}
+    Image: {{ $app.image.repository }}:{{ $app.image.tag }}
+    Replicas: {{ $app.replicaCount | default 1 }}
+    QoS: {{ $app.resources.qos | default "Guaranteed" }}
+
+{{- if and $app.serviceAccount $app.serviceAccount.create }}
+  ServiceAccount: {{ include "app.fullname" $ }}-{{ include "app.kebab" $appName | trim }}-svc
+{{- end }}
+
+{{- if $app.persistence }}
+  PersistentVolumeClaims:
+  {{- range $vname, $vcfg := $app.persistence }}
+    - {{ include "app.fullname" $ }}-{{ include "app.kebab" $appName | trim }}-{{ include "app.kebab" $vname | trim }} ({{ $vcfg.size }}, {{ $vcfg.accessMode }})
+    {{- if and $vcfg.backup $vcfg.backup.enabled }}
+      Kasten Backup: frequency={{ $vcfg.backup.frequency }}, retention={{ $vcfg.backup.retention | default 7 }} days
+    {{- end }}
+  {{- end }}
+{{- end }}
+
+{{- if $app.configFiles }}
+  ConfigMaps/Secrets (mounted files):
+  {{- range $idx, $f := $app.configFiles }}
+    - {{ include "app.fileResourceName" (list $ $f) }}-{{ include "app.kebab" $appName | trim }} ({{ default "configMap" $f.type }}) → {{ $f.mountPath }}{{ if $f.subPath }}/{{ $f.subPath }}{{ end }}
+  {{- end }}
+{{- end }}
+
+{{- if $app.networkPolicy }}
+  NetworkPolicies:
+    - {{ include "app.fullname" $ }}-{{ include "app.kebab" $appName | trim }}-ingress
+    - {{ include "app.fullname" $ }}-{{ include "app.kebab" $appName | trim }}-egress
+{{- end }}
+
+  Probes:
+    Liveness: {{ $app.probes.liveness.probeType }} (delay={{ $app.probes.liveness.initialDelaySeconds }}s, period={{ $app.probes.liveness.periodSeconds }}s)
+    Readiness: {{ $app.probes.readiness.probeType }} (delay={{ $app.probes.readiness.initialDelaySeconds }}s, period={{ $app.probes.readiness.periodSeconds }}s)
+{{- end }}
+
+=== Services ===
+{{- $services := .Values.services | default dict }}
+{{- $groups := dict "clusterIp" "ClusterIP" "nodePort" "NodePort" "loadBalancer" "LoadBalancer" "externalName" "ExternalName" "headless" "ClusterIP (headless)" }}
+{{- range $gKey, $gType := $groups }}
+{{- $svcMap := index $services $gKey | default dict }}
+{{- range $svcName, $svc := $svcMap }}
+{{- if hasKey $svc "targetApps" }}
+{{- range $targetApp := $svc.targetApps }}
+  - {{ include "app.fullname" $ }}-{{ $targetApp }}-{{ $svcName }} ({{ $gType }})
+{{- end }}
+{{- else }}
+  - {{ include "app.fullname" $ }}-{{ $svcName }} ({{ $gType }})
+{{- end }}
+{{- end }}
+{{- end }}
+
+{{- $hasExposedRoute := false }}
+{{- range $svcName, $svc := (index $services "clusterIp" | default dict) }}
+{{- if and (hasKey $svc "exposedRoute") (eq $svc.exposedRoute true) }}
+{{- $hasExposedRoute = true }}
+{{- end }}
+{{- end }}
+{{- if $hasExposedRoute }}
+
+=== OpenShift Routes ===
+{{- range $svcName, $svc := (index $services "clusterIp" | default dict) }}
+{{- if and (hasKey $svc "exposedRoute") (eq $svc.exposedRoute true) }}
+{{- range $targetApp := $svc.targetApps }}
+  - {{ include "app.fullname" $ }}-{{ $targetApp }}-{{ $svcName }} → Service {{ include "app.fullname" $ }}-{{ $targetApp }}-{{ $svcName }} (TLS edge)
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}
+
+=== Useful Commands ===
   helm status {{ .Release.Name }} -n {{ .Release.Namespace }}
   kubectl get pods -n {{ .Release.Namespace }}
   kubectl get svc -n {{ .Release.Namespace }}
-
-{{- if .Values.app.services }}
-Services defined in values:
-{{- range .Values.app.services }}
-  - {{ .name }} (type: {{ .type }})
-{{- end }}
-{{- end }}
-
-{{- if .Values.app.route }}
-Note: OpenShift Route is managed by templates/route.yaml.
-Use `oc get route -n {{ .Release.Namespace }}` to inspect exposure.
-{{- end }}
-
+  kubectl get pvc -n {{ .Release.Namespace }}
+  kubectl get networkpolicy -n {{ .Release.Namespace }}
+  oc get route -n {{ .Release.Namespace }}
+  oc get project {{ .Values.project.name }}
