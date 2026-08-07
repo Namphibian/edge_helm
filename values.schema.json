@@ -369,14 +369,55 @@
     "serviceDefRoutable": {
       "type": "object",
       "required": [
+        "targetApps",
         "ports"
       ],
       "properties": {
         "description": {
           "type": "string"
         },
+        "targetApps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/dnsLabel"
+          }
+        },
         "exposedRoute": {
           "type": "boolean"
+        },
+        "annotations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ports": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/servicePortLink"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "serviceDefNonRoutable": {
+      "type": "object",
+      "required": [
+        "targetApps",
+        "ports"
+      ],
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "targetApps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/dnsLabel"
+          }
         },
         "annotations": {
           "type": "array",
@@ -632,13 +673,13 @@
         "nodePort": {
           "type": "object",
           "additionalProperties": {
-            "$ref": "#/definitions/serviceDefRoutable"
+            "$ref": "#/definitions/serviceDefNonRoutable"
           }
         },
         "loadBalancer": {
           "type": "object",
           "additionalProperties": {
-            "$ref": "#/definitions/serviceDefRoutable"
+            "$ref": "#/definitions/serviceDefNonRoutable"
           }
         },
         "externalName": {
@@ -652,15 +693,18 @@
           "additionalProperties": {
             "$ref": "#/definitions/serviceDefHeadless"
           }
-        },
-        "headles": {
-          "type": "object",
-          "additionalProperties": {
-            "$ref": "#/definitions/serviceDefHeadless"
-          }
         }
       },
       "additionalProperties": false
+    },
+    "annotationSets": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": {
+          "$ref": "#/definitions/annotationValue"
+        }
+      }
     },
     "app": {
       "type": "object",
@@ -675,9 +719,9 @@
           ],
           "properties": {
             "repository": {
-                "type": "string",
-                "minLength": 1,
-                "pattern": "^[^\\s]+$"
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[^\\s]+$"
             },
             "tag": {
               "type": "string"
@@ -742,15 +786,6 @@
               "$ref": "#/definitions/configDataRef"
             }
           ]
-        },
-        "annotationSets": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "object",
-            "additionalProperties": {
-              "$ref": "#/definitions/annotationValue"
-            }
-          }
         },
         "resources": {
           "type": "object",
@@ -1089,7 +1124,10 @@
             },
             "additionalProperties": false,
             "not": {
-              "required": ["data", "transform"]
+              "required": [
+                "data",
+                "transform"
+              ]
             }
           }
         }

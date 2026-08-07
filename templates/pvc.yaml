@@ -2,6 +2,7 @@
 {{- $appName := first (keys $root.Values.app | sortAlpha) -}}
 {{- $app := index $root.Values.app $appName -}}
 {{- range $name, $cfg := $app.persistence }}
+---
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -15,7 +16,7 @@ metadata:
     k10.kasten.io/backup: "true"
     {{- end }}
     {{- if $cfg.annotations }}
-    {{- include "app.annotations" (list $cfg.annotations $root $app.annotationSets) | trim | nindent 4 }}
+    {{- include "annotationsSets" (list $cfg.annotations $root $app.annotationSets) | trim | nindent 4 }}
     {{- end }}
   {{- end }}
 spec:
@@ -27,5 +28,4 @@ spec:
   resources:
     requests:
       storage: {{ $cfg.size }}
----
 {{- end }}

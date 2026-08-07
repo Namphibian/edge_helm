@@ -1,9 +1,10 @@
 {{- $root := . -}}
 {{- $services := $root.Values.services | default dict -}}
+{{- $apps := $root.Values.app | default dict -}}
 {{- $groups := list
-      (dict "valuesKey" "clusterIp"    "serviceType" "ClusterIP"    "headless" false "external" false)
-      (dict "valuesKey" "nodePort"     "serviceType" "NodePort"     "headless" false "external" false)
-      (dict "valuesKey" "loadBalancer" "serviceType" "LoadBalancer" "headless" false "external" false)
+      (dict "valuesKey" "clusterIp"    "serviceType" "ClusterIP"    "headless" false "external" false "requiresTargetApps" true)
+      (dict "valuesKey" "nodePort"     "serviceType" "NodePort"     "headless" false "external" false "requiresTargetApps" true)
+      (dict "valuesKey" "loadBalancer" "serviceType" "LoadBalancer" "headless" false "external" false "requiresTargetApps" true)
       (dict "valuesKey" "externalName" "serviceType" "ExternalName" "headless" false "external" true)
       (dict "valuesKey" "headless"     "serviceType" "ClusterIP"    "headless" true  "external" false)
       (dict "valuesKey" "headles"      "serviceType" "ClusterIP"    "headless" true  "external" false)
@@ -12,17 +13,46 @@
 {{- $svcMap := index $services (index $g "valuesKey") | default dict -}}
 {{- range $svcName := (keys $svcMap | sortAlpha) }}
 {{- $svc := index $svcMap $svcName -}}
+{{- $requiresTargetApps := index $g "requiresTargetApps" | default false -}}
+{{- if $requiresTargetApps -}}
+  {{- if not (hasKey $svc "targetApps") -}}
+    {{- fail (printf "service %s.%s must define targetApps" (index $g "valuesKey") $svcName) -}}
+  {{- end -}}
+  {{- if not (kindIs "slice" $svc.targetApps) -}}
+    {{- fail (printf "service %s.%s targetApps must be a list" (index $g "valuesKey") $svcName) -}}
+  {{- end -}}
+  {{- if eq (len $svc.targetApps) 0 -}}
+    {{- fail (printf "service %s.%s targetApps must not be empty" (index $g "valuesKey") $svcName) -}}
+  {{- end -}}
+{{- end -}}
+{{- $targetApps := list "" -}}
+{{- if $requiresTargetApps -}}
+  {{- $targetApps = $svc.targetApps -}}
+{{- end -}}
+{{- range $targetApp := $targetApps }}
+{{- if $requiresTargetApps -}}
+  {{- if not $targetApp -}}
+    {{- fail (printf "service %s.%s targetApps entries must be non-empty app names" (index $g "valuesKey") $svcName) -}}
+  {{- end -}}
+  {{- if not (hasKey $apps $targetApp) -}}
+    {{- fail (printf "service %s.%s targetApp %q not found in .Values.app" (index $g "valuesKey") $svcName $targetApp) -}}
+  {{- end -}}
+{{- end -}}
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "app.fullname" $root }}-{{ $svcName }}
+  name: {{ include "app.fullname" $root }}{{- if $requiresTargetApps }}-{{ $targetApp }}{{- end }}-{{ $svcName }}
   namespace: {{ $root.Release.Namespace }}
   labels:
+    {{- if $requiresTargetApps }}
+    {{- include "app.labels" (list $root $targetApp) | nindent 4 }}
+    {{- else }}
     {{- include "app.labels" $root | nindent 4 }}
+    {{- end }}
   {{- if $svc.annotations }}
   annotations:
-    {{- include "app.annotations" (list $svc.annotations $root) | trim | nindent 4 }}
+    {{- include "annotationsSets" (list $svc.annotations $root) | trim | nindent 4 }}
   {{- end }}
 spec:
   type: {{ index $g "serviceType" }}
@@ -33,7 +63,11 @@ spec:
   externalName: {{ $svc.externalName }}
   {{- else }}
   selector:
+    {{- if $requiresTargetApps }}
+    {{- include "app.selectorLabels" (list $root $targetApp) | nindent 4 }}
+    {{- else }}
     {{- include "app.selectorLabels" $root | nindent 4 }}
+    {{- end }}
   {{- if not $svc.ports }}
   {{- fail (printf "service %s must define ports" $svcName) }}
   {{- end }}
@@ -67,7 +101,8 @@ spec:
       port: {{ include "app.resolvePort" (list $srcDef.port $root.Values.configData (printf "service %s source port %s" $svcName $srcKey) true) }}
       targetPort: {{ include "app.resolvePort" (list $tgtDef.port $root.Values.configData (printf "service %s target port %s" $svcName $tgtKey) true) }}
       protocol: {{ $srcDef.protocol | default "TCP" }}
-    {{- end }}
+    {{ end }}
   {{ end }}
+{{ end }}
 {{ end }}
 {{ end }}

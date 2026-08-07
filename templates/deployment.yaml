@@ -1,7 +1,7 @@
 {{- $root := . -}}
-{{- $apps := $root.Values.app | default dict -}}
+{{ $apps := $root.Values.app | default dict -}}
 {{- range $appName := (keys $apps | sortAlpha) }}
-{{- $app := index $apps $appName -}}
+{{ $app := index $apps $appName -}}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -9,23 +9,23 @@ metadata:
   name: {{ include "app.fullname" $root }}-{{ include "app.kebab" $appName | trim }}
   namespace: {{ $root.Release.Namespace }}
   labels:
-    {{- include "app.labels" $root | nindent 4 }}
-    app.kubernetes.io/component: {{ include "app.kebab" $appName | trim }}
+    {{- include "app.labels" (list $root $appName) | nindent 4 }}
   {{- if and $app.deployment $app.deployment.annotations }}
   annotations:
-    {{- include "app.annotations" (list $app.deployment.annotations $root $app.annotationSets) | trim | nindent 4 }}
+    debug-values: |
+      {{- $apps | toPrettyJson | nindent 6 }}
+
+    {{- include "annotationsSets" (list $app.deployment.annotations $root $app.annotationSets) | trim | nindent 4 }}
   {{- end }}
 spec:
   replicas: {{ include "app.configValue" (list $app.replicaCount $root.Values.configData (printf "deployment %s replicas" $appName)) }}
   selector:
     matchLabels:
-      {{- include "app.selectorLabels" $root | nindent 6 }}
-      app.kubernetes.io/component: {{ include "app.kebab" $appName | trim }}
+      {{- include "app.selectorLabels" (list $root $appName) | nindent 6 }}
   template:
     metadata:
       labels:
-        {{- include "app.selectorLabels" $root | nindent 8 }}
-        app.kubernetes.io/component: {{ include "app.kebab" $appName | trim }}
+        {{- include "app.selectorLabels" (list $root $appName) | nindent 8 }}
     spec:
       serviceAccountName: {{ include "app.fullname" $root }}-svc
       {{- with $app.image.imagePullSecrets }}
@@ -190,3 +190,4 @@ spec:
         {{- end }}
       {{- end }}
 {{- end }}
+---

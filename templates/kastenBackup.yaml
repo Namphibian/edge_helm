@@ -13,7 +13,7 @@ metadata:
     {{- include "app.labels" $root | nindent 4 }}
   {{- if $cfg.backup.annotations }}
   annotations:
-    {{- include "app.annotations" (list $cfg.backup.annotations $root $app.annotationSets) | trim | nindent 4 }}
+    {{- include "annotationsSets" (list $cfg.backup.annotations $root $app.annotationSets) | trim | nindent 4 }}
   {{- end }}
 spec:
   comment: "Backup policy for {{ $name }} PVC"

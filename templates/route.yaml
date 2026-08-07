@@ -1,8 +1,7 @@
 {{- $root := . -}}
-{{- $appName := first (keys $root.Values.app | sortAlpha) -}}
-{{- $app := index $root.Values.app $appName -}}
+{{- $apps := $root.Values.app | default dict -}}
 {{- $services := $root.Values.services | default dict -}}
-{{- $routeGroups := list "clusterIp" "nodePort" "loadBalancer" -}}
+{{- $routeGroups := list "clusterIp" -}}
 {{- $hasExposedRoute := false -}}
 {{- range $gname := $routeGroups }}
 {{- $svcMap := index $services $gname | default dict -}}
@@ -20,6 +19,15 @@
 {{- $svc := index $svcMap $svcName -}}
 {{- if and (hasKey $svc "exposedRoute") (eq $svc.exposedRoute true) }}
 {{- if not $svc.ports }}{{- fail (printf "route for service %s requires ports" $svcName) }}{{- end }}
+{{- if not (hasKey $svc "targetApps") -}}
+  {{- fail (printf "route service %s must define targetApps" $svcName) -}}
+{{- end -}}
+{{- if not (kindIs "slice" $svc.targetApps) -}}
+  {{- fail (printf "route service %s targetApps must be a list" $svcName) -}}
+{{- end -}}
+{{- if eq (len $svc.targetApps) 0 -}}
+  {{- fail (printf "route service %s targetApps must not be empty" $svcName) -}}
+{{- end -}}
 {{- $firstPort := index $svc.ports 0 -}}
 {{- $srcKey := $firstPort.sourcePort -}}
 {{- if kindIs "map" $firstPort.sourcePort -}}
@@ -33,27 +41,36 @@
   {{- fail (printf "route service %s sourcePort key %q not found in .Values.ports" $svcName $srcKey) -}}
 {{- end -}}
 {{- $srcDef := index $root.Values.ports $srcKey -}}
+{{- range $targetApp := $svc.targetApps }}
+{{- if not $targetApp -}}
+  {{- fail (printf "route service %s targetApps entries must be non-empty app names" $svcName) -}}
+{{- end -}}
+{{- if not (hasKey $apps $targetApp) -}}
+  {{- fail (printf "route service %s targetApp %q not found in .Values.app" $svcName $targetApp) -}}
+{{- end -}}
+{{- $app := index $apps $targetApp -}}
 ---
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
-  name: {{ include "app.fullname" $root }}-{{ $svcName }}
+  name: {{ include "app.fullname" $root }}-{{ $targetApp }}-{{ $svcName }}
   namespace: {{ $root.Release.Namespace }}
   labels:
-    {{- include "app.labels" $root | nindent 4 }}
+    {{- include "app.labels" (list $root $targetApp) | nindent 4 }}
   {{- if and $app.route $app.route.annotations }}
   annotations:
-    {{- include "app.annotations" (list $app.route.annotations $root $app.annotationSets) | trim | nindent 4 }}
+    {{- include "annotationsSets" (list $app.route.annotations $root) | trim | nindent 4 }}
   {{- end }}
 spec:
   to:
     kind: Service
-    name: {{ include "app.fullname" $root }}-{{ $svcName }}
+    name: {{ include "app.fullname" $root }}-{{ $targetApp }}-{{ $svcName }}
     weight: 100
   port:
     targetPort: {{ lower $srcDef.name }}
   tls:
     termination: edge
+{{ end }}
 {{ end }}
 {{ end }}
 {{ end }}

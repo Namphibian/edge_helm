@@ -305,6 +305,19 @@ configData:
     value: "18:30"
     type: "string"
 
+annotationSets:
+  prometheus:
+    prometheus.io/scrape: "true"
+    prometheus.io/port:
+      configDataKey: prometheusPort
+
+  awsInternal:
+    service.beta.kubernetes.io/aws-load-balancer-internal: "true"
+
+  istio:
+    traffic.sidecar.istio.io/includeInboundPorts:
+      configDataKey: "serverPort"
+
 # -----------------------------------------------------------------------------
 # Port definitions (top-level)
 # -----------------------------------------------------------------------------
@@ -323,11 +336,11 @@ ports:
     protocol: TCP
     description: "Used to configure the prometheus port for scraping"
 
-  # dnsPort:
-  #   port: 53
-  #   name: "dns"
-  #   protocol: UDP
-  #   description: "DNS port for internal service discovery"
+  dnsPort:
+   port: 53
+   name: "dns"
+   protocol: UDP
+   description: "DNS port for internal service discovery"
 
 # -----------------------------------------------------------------------------
 # Services (top-level)
@@ -340,6 +353,8 @@ ports:
 # - headless     -> renders type ClusterIP + clusterIP: None
 #
 # Service object key (e.g. `api`) becomes the service name suffix.
+# For ClusterIP/NodePort/LoadBalancer services, `targetApps` is required and
+# each entry renders one Service named `<fullname>-<appName>-<serviceKey>`.
 # For routable service groups, `exposedRoute: true` allows route template
 # to generate a Route for that service.
 services:
@@ -347,6 +362,9 @@ services:
     api:
       description: "This service hosts the API ports so that we can expose it to the world"
       exposedRoute: false
+      targetApps:
+        - evxcs
+        - abc
       #        exposeAsRoute:
       #          enabled: true
       #          annotations: []
@@ -362,9 +380,14 @@ services:
             portDefinitionKey: prometheusPort
           targetPort:
             portDefinitionKey: prometheusPort
+
+
     foo:
       description: "This service hosts the API ports so that we can expose it to the world"
       exposedRoute: false
+      targetApps:
+        - evxcs
+        - abc
       #        exposeAsRoute:
       #          enabled: true
       #          annotations: []
@@ -381,45 +404,49 @@ services:
           targetPort:
             portDefinitionKey: prometheusPort
 
-#  nodePort:
-#    dns:
-#      description: "This service hosts the DNS ports so that we can expose it to the world"
-#      exposedRoute: false
-#      annotations:
-#        - prometheus
-#        - istio
-#      ports:
-#        - sourcePort:
-#            portDefinitionKey: dnsPort
-#          targetPort:
-#            portDefinitionKey: dnsPort
+  nodePort:
+    dns:
+      description: "This service hosts the DNS ports so that we can expose it to the world"
+      targetApps:
+        - evxcs
+        - abc
+      annotations:
+        - prometheus
+        - istio
+      ports:
+        - sourcePort:
+            portDefinitionKey: dnsPort
+          targetPort:
+            portDefinitionKey: dnsPort
 
-#  loadBalancer:
-#    prometheus:
-#      description: "This service hosts the Prometheus ports so that we can expose it to the world"
-#      exposedRoute: true
-#      annotations:
-#        - prometheus
-#        - istio
-#      ports:
-#        - sourcePort:
-#            portDefinitionKey: prometheusPort
-#          targetPort:
-#            portDefinitionKey: prometheusPort
+  loadBalancer:
+    prometheus:
+      description: "This service hosts the Prometheus ports so that we can expose it to the world"
+      targetApps:
+        - evxcs
+        - abc
+      annotations:
+        - prometheus
+        - istio
+      ports:
+        - sourcePort:
+            portDefinitionKey: prometheusPort
+          targetPort:
+            portDefinitionKey: prometheusPort
 
-#  externalName:
-#    mysql-dev:
-#      description: "This is an external name service that points to the mysql-dev service in the dev namespace"
-#      externalName: "mysql-dev.dev.svc.cluster.local"
+  externalName:
+    mysql-dev:
+      description: "This is an external name service that points to the mysql-dev service in the dev namespace"
+      externalName: "mysql-dev.dev.svc.cluster.local"
 
-#  headless:
-#    evs-storage:
-#      description: "This is a headless service that points to the evs-storage service in the dev namespace"
-#      ports:
-#        - sourcePort:
-#            portDefinitionKey: serverPort
-#          targetPort:
-#            portDefinitionKey: serverPort
+  headless:
+    evs-storage:
+      description: "This is a headless service that points to the evs-storage service in the dev namespace"
+      ports:
+        - sourcePort:
+            portDefinitionKey: serverPort
+          targetPort:
+            portDefinitionKey: serverPort
 
 # -----------------------------------------------------------------------------
 # External secret stores
@@ -459,7 +486,7 @@ externalSecrets:
 # Application configuration
 # -----------------------------------------------------------------------------
 app:
-  evs:
+  evxcs:
 
     # ---------------------------------------------------------------------------
     # Container image
@@ -490,21 +517,7 @@ app:
     serviceAccount:
       create: true
       annotations: [ ]
-    # ---------------------------------------------------------------------------
-    # Annotation sets — reusable annotation groups
-    # ---------------------------------------------------------------------------
-    annotationSets:
-      prometheus:
-        prometheus.io/scrape: "true"
-        prometheus.io/port:
-          configDataKey: prometheusPort
 
-      awsInternal:
-        service.beta.kubernetes.io/aws-load-balancer-internal: "true"
-
-      istio:
-        traffic.sidecar.istio.io/includeInboundPorts:
-          configDataKey: "serverPort"
 
     # ---------------------------------------------------------------------------
     # Resource requests / limits with QoS support
@@ -528,6 +541,276 @@ app:
           enabled: true
           frequency: "@daily"
           retention: 7
+          annotations: [ ]
+        storageClass: "crc-csi-hostpath-provisioner"
+        accessMode: ReadWriteOnce
+        size: 1Gi
+        name: evs-storage
+        mountPath: /app/storage
+
+    # ---------------------------------------------------------------------------
+    # Container ports (ports exposed by the container)
+    # ---------------------------------------------------------------------------
+  #  containerPorts:
+  #    - portDefinitionKey: serverPort
+
+    # ---------------------------------------------------------------------------
+    # Health probe types (shared probe definitions)
+    # ---------------------------------------------------------------------------
+    # Define probe templates once, then choose one by name per liveness/readiness.
+    probeTypes:
+      httpGet:
+        path: /evs
+        port:
+          portDefinitionKey: serverPort
+
+      tcpSocket:
+        port:
+          portDefinitionKey: serverPort
+
+      exec:
+        command: [ "/bin/sh", "-c", "curl -f http://localhost:8080/actuator/health || exit 1" ]
+
+    # ---------------------------------------------------------------------------
+    # Health probes (selectors + timing)
+    # ---------------------------------------------------------------------------
+    probes:
+      liveness:
+        probeType: exec
+        initialDelaySeconds: 60
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 3
+
+      readiness:
+        probeType: tcpSocket
+        initialDelaySeconds: 30
+        periodSeconds: 10
+        timeoutSeconds: 5
+        failureThreshold: 3
+
+      # To Be Added.
+      # Start up probe.
+
+    # ---------------------------------------------------------------------------
+    # Network policies
+    # ---------------------------------------------------------------------------
+    networkPolicy:
+      ingress:
+        allowedSources:
+          - type: podSelector
+            matchLabels:
+              app.kubernetes.io/name: evs
+        ports:
+          - serverPort
+
+      egress:
+        allowedHosts:
+          - name: buyboost
+            ip:
+              configDataKey: buyboostOpenapiHost.host
+            port:
+              configDataKey: buyboostOpenapiHost.port
+          - name: haidp
+            ip:
+              configDataKey: haidpOpenapiHost.host
+            port:
+              configDataKey: haidpOpenapiHost.port
+
+    # ---------------------------------------------------------------------------
+    # Environment variables
+    # ---------------------------------------------------------------------------
+    env:
+      LOGGING_CONFIG: "/app/etc/logback-spring.xml"
+      SPRING_MAIN_BANNER_MODE: 'off'
+      SPRING_CONFIG_ADDITIONAL_LOCATIONS: "/app/config/secrets"
+      JAVA_UTIL_LOGGING_CONFIG_FILE: "/app/config/logging.properties"
+      #    SERVER_PORT:
+      #      configDataKey: serverPort
+      #    SERVER_SERVLET_CONTEXT_PATH:
+      #      configDataKey: serverServletContextPath
+      #    SERVER_VERSION:
+      #      configDataKey: serverVersion
+      #    SERVER_TOMCAT_MAX_THREADS:
+      #      configDataKey: serverTomcatMaxThreads
+      #    SERVER_TOMCAT_MIN_SPARE_THREADS:
+      #      configDataKey: serverTomcatMinSpareThreads
+      #    SERVER_TOMCAT_MAX_CONNECTIONS:
+      #      configDataKey: serverTomcatMaxConnections
+      #    SERVER_TOMCAT_ACCEPT_COUNT:
+      #      configDataKey: serverTomcatAcceptCount
+      #    SERVER_TOMCAT_CONNECTION_TIMEOUT:
+      #      configDataKey: serverTomcatConnectionTimeout
+      #    SERVER_TOMCAT_KEEP_ALIVE_TIMEOUT:
+      #      configDataKey: serverTomcatKeepAliveTimeout
+      #    SERVER_TOMCAT_MAX_HTTP_FORM_POST_SIZE:
+      #      configDataKey: serverTomcatMaxHttpFormPostSize
+      #    OPENAPI_USERS:
+      #      configDataKey: openapiUsers
+      #    STORAGE_UPLOAD_MAX_CONCURRENCY:
+      #      configDataKey: storageUploadMaxConcurrency
+      #    STORAGE_FORBIDDEN_FILE_TYPES:
+      #      configDataKey: storageForbiddenFileTypes
+      #    SCHEDULER_UPLOAD_START_TIME:
+      #      configDataKey: schedulerUploadStartTime
+      #    SCHEDULER_UPLOAD_END_TIME:
+      #      configDataKey: schedulerUploadEndTime
+      #    BUYBOOST_OPENAPI_HOST:
+      #      configDataKey: buyboostOpenapiHost
+      BUYBOOST_OPENAPI_AK:
+        configDataKey: buyboostOpenapiAk
+      BUYBOOST_OPENAPI_SK:
+        configDataKey: buyboostOpenapiSk
+      #    HAIDP_OPENAPI_HOST:
+      #      configDataKey: haidpOpenapiHost
+      #    HAIDP_OPENAPI_CODE:
+      #      configDataKey: haidpOpenapiCode
+      #    HAIDP_OPENAPI_DESC:
+      #      configDataKey: haidpOpenapiDesc
+      HAIDP_OPENAPI_AK:
+        configDataKey: haidpOpenapiAk
+      HAIDP_OPENAPI_SK:
+        configDataKey: haidpOpenapiSk
+
+    # ---------------------------------------------------------------------------
+    # Config files mounted into the pod
+    # ---------------------------------------------------------------------------
+    # Each entry creates a ConfigMap/Secret + mount.
+    # Use `data` for literal block content, or `transform` to generate
+    # KEY=VALUE lines from configData references.
+    configFiles:
+      - name: "jul-logging-override"
+        mountPath: "/app/config"
+        subPath: "logging.properties"
+        type: configMap
+        data: |
+          handlers=java.util.logging.ConsoleHandler.level=INFO
+          java.util.logging.ConsoleHandler.level=INFO
+          java.util.logging.ConsoleHandler.formatter=java.util.logging.SimpleFormatter
+          java.util.logging.SimpleFormatter.format=%1$tF %1$tT.%1$tL %-7s [%7$s] %2$s - %5$s%n
+      - name: "logback-settings-override"
+        mountPath: "/app/etc"
+        subPath: "logback-spring.xml"
+        type: "configMap"
+        data: |
+          <configuration>
+
+            <!-- Unified log pattern -->
+            <property name="LOG_PATTERN"
+                      value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger - %msg%n"/>
+
+            <!-- Console only -->
+            <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+              <encoder>
+                <pattern>${LOG_PATTERN}</pattern>
+              </encoder>
+            </appender>
+
+            <!-- Root logger -->
+            <root level="INFO">
+              <appender-ref ref="STDOUT"/>
+            </root>
+
+          </configuration>
+      - name: "application-properties-override"
+        mountPath: "/app/config"
+        subPath: "application.properties"
+        type: "configMap"
+        transform:
+          server.port:
+            configDataKey: serverPort
+          server.servlet.context.path:
+            configDataKey: serverServletContextPath
+          server.version:
+            configDataKey: serverVersion
+          server.tomcat.max-threads:
+            configDataKey: serverTomcatMaxThreads
+          server.tomcat.min-spare-threads:
+            configDataKey: serverTomcatMinSpareThreads
+          server.tomcat.max-connections:
+            configDataKey: serverTomcatMaxConnections
+          server.tomcat.accept-count:
+            configDataKey: serverTomcatAcceptCount
+          server.tomcat.connection-timeout:
+            configDataKey: serverTomcatConnectionTimeout
+          server.tomcat.keep-alive-timeout:
+            configDataKey: serverTomcatKeepAliveTimeout
+          server.tomcat.max-http-form-post-size:
+            configDataKey: serverTomcatMaxHttpFormPostSize
+          openapi.users:
+            configDataKey: openapiUsers
+          storage.upload.max.concurrency:
+            configDataKey: storageUploadMaxConcurrency
+          storage.forbidden.file.types:
+            configDataKey: storageForbiddenFileTypes
+          scheduler.upload.start_time:
+            configDataKey: schedulerUploadStartTime
+          scheduler.upload.end_time:
+            configDataKey: schedulerUploadEndTime
+          buyboost.openapi.host:
+            configDataKey: buyboostOpenapiHost
+          haidp.openapi.host:
+            configDataKey: haidpOpenapiHost
+          haidp.openapi.code:
+            configDataKey: haidpOpenapiCode
+          haidp.openapi.desc:
+            configDataKey: haidpOpenapiDesc
+  abc:
+
+    # ---------------------------------------------------------------------------
+    # Container image
+    # ---------------------------------------------------------------------------
+    image:
+      repository: default-route-openshift-image-registry.apps-crc.testing/evs/evs
+      tag: dev
+      pullPolicy: IfNotPresent
+      imagePullSecrets:
+        - name: xxx
+
+    # ---------------------------------------------------------------------------
+    # Deployment metadata
+    # ---------------------------------------------------------------------------
+    deployment:
+      annotations: [ ]
+
+    # ---------------------------------------------------------------------------
+    # Route metadata
+    # ---------------------------------------------------------------------------
+    route:
+      annotations: [ ]
+
+    # ---------------------------------------------------------------------------
+    # Replica count
+    # ---------------------------------------------------------------------------
+    replicaCount: 1
+    serviceAccount:
+      create: true
+      annotations: [ ]
+
+
+    # ---------------------------------------------------------------------------
+    # Resource requests / limits with QoS support
+    # ---------------------------------------------------------------------------
+    resources:
+      qos: "BestEffort"
+      requests:
+        memory: "6Gi"
+        cpu: "750"
+      limits:
+        memory: "8Gi"
+        cpu: "1000"
+
+    # ---------------------------------------------------------------------------
+    # Persistent storage
+    # ---------------------------------------------------------------------------
+    persistence:
+      dataVolume:
+        annotations: [ ]
+        backup:
+          enabled: true
+          frequency: "@daily"
+          retention: 7
+          annotations: [ ]
         storageClass: "crc-csi-hostpath-provisioner"
         accessMode: ReadWriteOnce
         size: 1Gi

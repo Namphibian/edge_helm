@@ -2,6 +2,7 @@
 Create a ResourceQuota in the release namespace when .Values.quota.enabled is true.
 */ -}}
 {{- if .Values.project.quota.enabled }}
+---
 apiVersion: v1
 kind: ResourceQuota
 metadata:

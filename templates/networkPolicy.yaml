@@ -12,7 +12,7 @@ metadata:
     {{- include "app.labels" $root | nindent 4 }}
   {{- if .ingress.annotations }}
   annotations:
-    {{- include "app.annotations" (list .ingress.annotations $root $app.annotationSets) | trim | nindent 4 }}
+    {{- include "annotationsSets" (list .ingress.annotations $root) | trim | nindent 4 }}
   {{- end }}
 spec:
   podSelector:
@@ -34,7 +34,7 @@ spec:
         {{- $portDef := index $root.Values.ports . }}
         - protocol: {{ $portDef.protocol | default "TCP" }}
           port: {{ include "app.resolvePort" (list $portDef.port $root.Values.configData (printf "networkpolicy ingress port %s" .) true) }}
-        {{- end }}
+        {{ end }}
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -45,7 +45,7 @@ metadata:
     {{- include "app.labels" $root | nindent 4 }}
   {{- if .egress.annotations }}
   annotations:
-    {{- include "app.annotations" (list .egress.annotations $root $app.annotationSets) | trim | nindent 4 }}
+    {{- include "annotationsSets" (list .egress.annotations $root) | trim | nindent 4 }}
   {{- end }}
 spec:
   podSelector:

@@ -7,16 +7,38 @@
 {{- end -}}
 
 {{- define "app.labels" -}}
-app.kubernetes.io/name: {{ include "app.name" . }}
-app.kubernetes.io/instance: {{ .Release.Name }}
-app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
-app.kubernetes.io/managed-by: {{ .Release.Service }}
-helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" }}
+{{- $root := . -}}
+{{- $component := "" -}}
+{{- if kindIs "slice" . -}}
+  {{- $root = index . 0 -}}
+  {{- if ge (len .) 2 -}}
+    {{- $component = printf "%v" (index . 1) -}}
+  {{- end -}}
+{{- end -}}
+app.kubernetes.io/name: {{ include "app.name" $root }}
+app.kubernetes.io/instance: {{ $root.Release.Name }}
+app.kubernetes.io/version: {{ $root.Chart.AppVersion | quote }}
+app.kubernetes.io/managed-by: {{ $root.Release.Service }}
+helm.sh/chart: {{ printf "%s-%s" $root.Chart.Name $root.Chart.Version | replace "+" "_" }}
+{{- if $component }}
+app.kubernetes.io/component: {{ include "app.kebab" $component | trim }}
+{{- end }}
 {{- end -}}
 
 {{- define "app.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "app.name" . }}
-app.kubernetes.io/instance: {{ .Release.Name }}
+{{- $root := . -}}
+{{- $component := "" -}}
+{{- if kindIs "slice" . -}}
+  {{- $root = index . 0 -}}
+  {{- if ge (len .) 2 -}}
+    {{- $component = printf "%v" (index . 1) -}}
+  {{- end -}}
+{{- end -}}
+app.kubernetes.io/name: {{ include "app.name" $root }}
+app.kubernetes.io/instance: {{ $root.Release.Name }}
+{{- if $component }}
+app.kubernetes.io/component: {{ include "app.kebab" $component | trim }}
+{{- end }}
 {{- end -}}
 
 
@@ -37,18 +59,36 @@ app.fileResourceName — build a deterministic resource/volume name for a config
 
 Parameters (list): [ $root, $file ]
   - $root : the Helm root context ($)
-  - $file : a single app.configFiles entry (must have .name and .type)
+  - $file : a single app.configFiles entry (must have .name)
 
 Returns: "<fullname>-<kebab(file.name)>-<type>" truncated to 63 characters.
-
-Usage: {{ include "app.fileResourceName" (list $ $file) }}
 */ -}}
 {{- define "app.fileResourceName" -}}
+{{- /* 1. Validate that the input list has exactly two elements */ -}}
+{{- if ne (len .) 2 -}}
+  {{- fail (printf "\n[ERROR][app.fileResourceName]: Invalid arguments. Expected a list containing ($root, $file), but received %d arguments instead." (len .)) -}}
+{{- end -}}
+
 {{- $root := index . 0 -}}
 {{- $file := index . 1 -}}
+
+{{- /* 2. Validate that $root context is present and has Capabilities */ -}}
+{{- if not (and $root (hasKey $root "Capabilities")) -}}
+  {{- fail "\n[ERROR][app.fileResourceName]: The first argument ($root) must be the global Helm root context ($)." -}}
+{{- end -}}
+
+{{- /* 3. Validate that $file is a map and has a '.name' attribute */ -}}
+{{- if not $file -}}
+  {{- fail "\n[ERROR][app.fileResourceName]: The second argument ($file) is empty or nil." -}}
+{{- else if not (hasKey $file "name") -}}
+  {{- fail (printf "\n[ERROR][app.fileResourceName]: Invalid file entry. Each configFiles entry must have a '.name' defined. Current item: %v" $file) -}}
+{{- end -}}
+
+{{- /* 4. Core Logic (unchanged but safe) */ -}}
 {{- $type := lower (default "configmap" $file.type) -}}
 {{- printf "%s-%s-%s" (trim (include "app.fullname" $root)) (trim (include "app.kebab" $file.name)) $type | trunc 63 | trimSuffix "-" -}}
 {{- end -}}
+
 
 {{- /*
 app.resolveConfigDataEntry — shared configDataKey lookup used by app.configValue and app.envValue.
@@ -194,32 +234,23 @@ Kept as a named alias for call-sites that explicitly want a string context.
 {{- /*
 app.annotations — render a merged annotations block from named annotation sets.
 
-Parameters (list): [ $annotationNames, $root, $annotationSets? ]
-  - $annotationNames : list of annotation-set names defined in app.annotationSets
+Parameters (list): [ $annotationNames, $root ]
+  - $annotationNames : list of annotation-set names defined in .Values.annotationSets
   - $root            : the Helm root context ($)
-  - $annotationSets  : optional app-specific annotationSets map
 
 Outputs key: "value" lines (without the parent "annotations:" key).
 Annotation values support the configDataKey pattern.
 */ -}}
-{{- define "app.annotations" -}}
+{{- define "annotationsSets" -}}
 {{- $annotationNames := index . 0 -}}
 {{- $root := index . 1 -}}
 {{- $annotationSets := dict -}}
-{{- if ge (len .) 3 -}}
-  {{- $annotationSets = (index . 2 | default dict) -}}
-{{- else -}}
-  {{- if and (kindIs "map" $root.Values.app) (gt (len $root.Values.app) 0) -}}
-    {{- $firstAppName := first (keys $root.Values.app | sortAlpha) -}}
-    {{- $firstApp := index $root.Values.app $firstAppName -}}
-    {{- if and (kindIs "map" $firstApp) (hasKey $firstApp "annotationSets") -}}
-      {{- $annotationSets = index $firstApp "annotationSets" -}}
-    {{- end -}}
-  {{- end -}}
+{{- if and (hasKey $root.Values "annotationSets") (kindIs "map" (index $root.Values "annotationSets")) -}}
+  {{- $annotationSets = index $root.Values "annotationSets" -}}
 {{- end -}}
 {{- range $asetName := $annotationNames -}}
 {{- if not (hasKey $annotationSets $asetName) -}}
-  {{- fail (printf "annotation set %q not found" $asetName) -}}
+  {{- fail (printf "annotation set %q not found in .Values.annotationSets" $asetName) -}}
 {{- end -}}
 {{- $aset := index $annotationSets $asetName -}}
 {{- range $ak := (keys $aset | sortAlpha) }}
