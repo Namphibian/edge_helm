@@ -1,6 +1,9 @@
 {{- $root := . -}}
+{{- $globalPvc := ($root.Values.persistence | default dict).pvc | default dict }}
 {{- range $appName, $app := $root.Values.app }}
-{{- range $name, $cfg := $app.persistence }}
+{{- $volPvcMap := (($app.volumes | default dict).pvc | default dict) }}
+{{- range $name, $volCfg := $volPvcMap }}
+{{- $cfg := index $globalPvc $name | default dict }}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -9,13 +12,14 @@ metadata:
   namespace: {{ $root.Release.Namespace }}
   labels:
     {{- include "app.labels" (list $root $appName) | nindent 4 }}
-  {{- if or (and $cfg.backup $cfg.backup.enabled) $cfg.annotations }}
+  {{- $annots := $volCfg.annotations | default $cfg.annotations }}
+  {{- if or (and $cfg.backup $cfg.backup.enabled) $annots }}
   annotations:
     {{- if and $cfg.backup $cfg.backup.enabled }}
     k10.kasten.io/backup: "true"
     {{- end }}
-    {{- if $cfg.annotations }}
-    {{- include "annotationsSets" (list $cfg.annotations $root $app.annotationSets) | trim | nindent 4 }}
+    {{- if $annots }}
+    {{- include "annotationsSets" (list $annots $root $app.annotationSets) | trim | nindent 4 }}
     {{- end }}
   {{- end }}
 spec:

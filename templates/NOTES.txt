@@ -50,13 +50,26 @@ ExternalSecrets:
   ServiceAccount: {{ include "app.fullname" $ }}-{{ include "app.kebab" $appName | trim }}-svc
 {{- end }}
 
-{{- if $app.persistence }}
+{{- $volMap := $app.volumes | default dict }}
+{{- $volPvcMap := $volMap.pvc | default dict }}
+{{- $volEdMap := $volMap.emptyDir | default dict }}
+{{- $globalPvc := ($.Values.persistence | default dict).pvc | default dict }}
+{{- $globalEd := ($.Values.persistence | default dict).emptyDir | default dict }}
+{{- if gt (len $volPvcMap) 0 }}
   PersistentVolumeClaims:
-  {{- range $vname, $vcfg := $app.persistence }}
-    - {{ include "app.fullname" $ }}-{{ include "app.kebab" $appName | trim }}-{{ include "app.kebab" $vname | trim }} ({{ $vcfg.size }}, {{ $vcfg.accessMode }})
-    {{- if and $vcfg.backup $vcfg.backup.enabled }}
-      Kasten Backup: frequency={{ $vcfg.backup.frequency }}, retention={{ $vcfg.backup.retention | default 7 }} days
+  {{- range $vname, $vcfg := $volPvcMap }}
+  {{- $gcfg := index $globalPvc $vname | default dict }}
+    - {{ include "app.fullname" $ }}-{{ include "app.kebab" $appName | trim }}-{{ include "app.kebab" $vname | trim }} ({{ $gcfg.size }}, {{ $gcfg.accessMode }}) → {{ $vcfg.mountPath }}
+    {{- if and $gcfg.backup $gcfg.backup.enabled }}
+      Kasten Backup: frequency={{ $gcfg.backup.frequency }}, retention={{ $gcfg.backup.retention | default 7 }} days
     {{- end }}
+  {{- end }}
+{{- end }}
+{{- if gt (len $volEdMap) 0 }}
+  EmptyDir Volumes:
+  {{- range $vname, $vcfg := $volEdMap }}
+  {{- $gecfg := index $globalEd $vname | default dict }}
+    - {{ $vname }}{{ if $gecfg.medium }} (medium={{ $gecfg.medium }}){{ end }}{{ if $gecfg.sizeLimit }} (sizeLimit={{ $gecfg.sizeLimit }}){{ end }}{{ if $vcfg.mountPath }} → {{ $vcfg.mountPath }}{{ end }}
   {{- end }}
 {{- end }}
 

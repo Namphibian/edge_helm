@@ -97,10 +97,30 @@ spec:
     {{- end -}}
     {{- $srcDef := index $root.Values.ports $srcKey }}
     {{- $tgtDef := index $root.Values.ports $tgtKey }}
-    - name: {{ lower $srcDef.name }}
+    {{- $srcIsRange := include "app.isPortRange" $srcDef -}}
+    {{- $tgtIsRange := include "app.isPortRange" $tgtDef -}}
+    {{- if eq $srcIsRange "true" }}
+    {{- $expanded := include "app.expandPortRange" (list $srcDef (printf "service %s source port %s" $svcName $srcKey)) | fromJsonArray }}
+    {{- range $ep := $expanded }}
+    - name: {{ lower $ep.name }}-{{ $targetApp }}-{{ $svcName }}
+      port: {{ $ep.port }}
+      targetPort: {{ $ep.port }}
+      protocol: {{ $ep.protocol }}
+    {{- end }}
+    {{- else if eq $tgtIsRange "true" }}
+    {{- $expanded := include "app.expandPortRange" (list $tgtDef (printf "service %s target port %s" $svcName $tgtKey)) | fromJsonArray }}
+    {{- range $ep := $expanded }}
+    - name: {{ lower $ep.name }}-{{ $targetApp }}-{{ $svcName }}
+      port: {{ $ep.port }}
+      targetPort: {{ $ep.port }}
+      protocol: {{ $ep.protocol }}
+    {{- end }}
+    {{- else }}
+    - name: {{ lower $srcDef.name }}-{{ $targetApp }}-{{ $svcName }}
       port: {{ include "app.resolvePort" (list $srcDef.port $root.Values.configData (printf "service %s source port %s" $svcName $srcKey) true) }}
       targetPort: {{ include "app.resolvePort" (list $tgtDef.port $root.Values.configData (printf "service %s target port %s" $svcName $tgtKey) true) }}
       protocol: {{ $srcDef.protocol | default "TCP" }}
+    {{- end }}
     {{ end }}
   {{ end }}
 {{ end }}

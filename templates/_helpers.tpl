@@ -19,10 +19,10 @@ app.kubernetes.io/name: {{ include "app.name" $root }}
 app.kubernetes.io/instance: {{ $root.Release.Name }}
 app.kubernetes.io/version: {{ $root.Chart.AppVersion | quote }}
 app.kubernetes.io/managed-by: {{ $root.Release.Service }}
-helm.sh/chart: {{ printf "%s-%s" $root.Chart.Name $root.Chart.Version | replace "+" "_" }}
 {{- if $component }}
 app.kubernetes.io/component: {{ include "app.kebab" $component | trim }}
 {{- end }}
+helm.sh/chart: {{ printf "%s-%s" $root.Chart.Name $root.Chart.Version | replace "+" "_" }}
 {{- end -}}
 
 {{- define "app.selectorLabels" -}}
@@ -36,9 +36,12 @@ app.kubernetes.io/component: {{ include "app.kebab" $component | trim }}
 {{- end -}}
 app.kubernetes.io/name: {{ include "app.name" $root }}
 app.kubernetes.io/instance: {{ $root.Release.Name }}
+app.kubernetes.io/version: {{ $root.Chart.AppVersion | quote }}
+app.kubernetes.io/managed-by: {{ $root.Release.Service }}
 {{- if $component }}
 app.kubernetes.io/component: {{ include "app.kebab" $component | trim }}
 {{- end }}
+helm.sh/chart: {{ printf "%s-%s" $root.Chart.Name $root.Chart.Version | replace "+" "_" }}
 {{- end -}}
 
 
@@ -415,4 +418,50 @@ rejects strings that look non-numeric (e.g. "http-tomcat", "0", "8.0").
     {{- fail (printf "%s: port value %q is not a valid positive integer (must match ^[1-9][0-9]*$)" $contextName $raw) -}}
   {{- end -}}
   {{- printf "%d" (int $raw) -}}
+{{- end -}}
+
+{{- /*
+app.isPortRange — returns "true" if a port definition uses a range, "false" otherwise.
+
+Parameters: $portDef (a single entry from .Values.ports)
+*/ -}}
+{{- define "app.isPortRange" -}}
+  {{- $portCfg := .port -}}
+  {{- if and (kindIs "map" $portCfg) (hasKey $portCfg "range") -}}
+    {{- "true" -}}
+  {{- else -}}
+    {{- "false" -}}
+  {{- end -}}
+{{- end -}}
+
+{{- /*
+app.expandPortRange — expands a port range definition into a JSON list of
+individual port entries, each with "port" (int) and "name" (string).
+
+Parameters (list): [ $portDef, $contextName ]
+  - $portDef    : a single entry from .Values.ports (must have port.range.start/end)
+  - $contextName: caller label for error messages
+
+The name for each expanded port is "<baseName>-<portNumber>".
+Returns: JSON array, e.g. [{"port":9820,"name":"cctv-port-9820","protocol":"TCP"},...]
+*/ -}}
+{{- define "app.expandPortRange" -}}
+  {{- $portDef     := index . 0 -}}
+  {{- $contextName := index . 1 -}}
+  {{- $rangeCfg := $portDef.port.range -}}
+  {{- if not (and (hasKey $rangeCfg "start") (hasKey $rangeCfg "end")) -}}
+    {{- fail (printf "%s: port range must have both 'start' and 'end' fields" $contextName) -}}
+  {{- end -}}
+  {{- $start := int $rangeCfg.start -}}
+  {{- $end   := int $rangeCfg.end -}}
+  {{- if gt $start $end -}}
+    {{- fail (printf "%s: port range start (%d) must be <= end (%d)" $contextName $start $end) -}}
+  {{- end -}}
+  {{- $baseName := $portDef.name -}}
+  {{- $protocol := $portDef.protocol | default "TCP" -}}
+  {{- $result := list -}}
+  {{- range $i := untilStep $start (add1 $end | int) 1 -}}
+    {{- $result = append $result (dict "port" $i "name" (printf "%s-%d" $baseName $i) "protocol" $protocol) -}}
+  {{- end -}}
+  {{- toJson $result -}}
 {{- end -}}

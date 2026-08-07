@@ -342,6 +342,15 @@ ports:
    protocol: UDP
    description: "DNS port for internal service discovery"
 
+  cctvPort:
+    port:
+      range:
+        start: 9820
+        end: 9900
+    name: "cctv-port"
+    protocol: TCP
+    description: "Port range used by CCTV camera streams"
+
 # -----------------------------------------------------------------------------
 # Services (top-level)
 # -----------------------------------------------------------------------------
@@ -381,12 +390,21 @@ services:
           targetPort:
             portDefinitionKey: prometheusPort
 
-
+    cctv:
+      description: "This service hosts the CCTV ports so that we can expose it to the world"
+      exposedRoute: false
+      targetApps:
+          - abc
+      annotations: []
+      ports:
+        - sourcePort:
+            portDefinitionKey: cctvPort
+          targetPort:
+            portDefinitionKey: cctvPort
     foo:
       description: "This service hosts the API ports so that we can expose it to the world"
       exposedRoute: false
       targetApps:
-        - evxcs
         - abc
       #        exposeAsRoute:
       #          enabled: true
@@ -447,6 +465,30 @@ services:
             portDefinitionKey: serverPort
           targetPort:
             portDefinitionKey: serverPort
+
+persistence:
+  pvc:
+    dataVolume:
+      annotations: [ ]
+      backup:
+        enabled: true
+        frequency: "@daily"
+        retention: 7
+        annotations: [ ]
+      storageClass: "crc-csi-hostpath-provisioner"
+      accessMode: ReadWriteOnce
+      size: 1Gi
+
+  emptyDir:
+    cacheVolume:
+      annotations: [ ]
+      medium: "Memory"        # or "Memory"
+      sizeLimit: "500Gi"     # optional
+       # mountPath optional — only used if user wants a default
+    workingVolume:
+      annotations: [ ]
+      sizeLimit: "1Gi"        # optional
+
 
 # -----------------------------------------------------------------------------
 # External secret stores
@@ -532,27 +574,44 @@ app:
         cpu: "1000"
 
     # ---------------------------------------------------------------------------
+    # How to mount persistent storage into the pod
+    # ---------------------------------------------------------------------------
+    volumes:
+      pvc: # pvc volume type
+        dataVolume: # name
+          annotations: [ ] # will overwrite the top-level pvc.dataVolume.annotations if specified
+          backup:
+            annotations: [ ] # will overwrite the top-level pvc.dataVolume.backup.annotations if specified
+          mountPath: /app/storage # mount path inside the container
+      emptyDir: # emptyDir volume type
+        cacheVolume: # name
+          mountPath: /app/cache # mount path inside the container
+        workingVolume: # name
+          mountPath: /app/working #` mount path inside the container
+
+    # ---------------------------------------------------------------------------
     # Persistent storage
     # ---------------------------------------------------------------------------
-    persistence:
-      dataVolume:
-        annotations: [ ]
-        backup:
-          enabled: true
-          frequency: "@daily"
-          retention: 7
-          annotations: [ ]
-        storageClass: "crc-csi-hostpath-provisioner"
-        accessMode: ReadWriteOnce
-        size: 1Gi
-        name: evs-storage
-        mountPath: /app/storage
+#    persistence:
+#      pvc:
+#        dataVolume:
+#          annotations: [ ]
+#          backup:
+#            enabled: true
+#            frequency: "@daily"
+#            retention: 7
+#            annotations: [ ]
+#          storageClass: "crc-csi-hostpath-provisioner"
+#          accessMode: ReadWriteOnce
+#          size: 1Gi
+#          mountPath: /app/storage
 
     # ---------------------------------------------------------------------------
     # Container ports (ports exposed by the container)
     # ---------------------------------------------------------------------------
-  #  containerPorts:
-  #    - portDefinitionKey: serverPort
+    containerPorts:
+      - portDefinitionKey: serverPort
+      - portDefinitionKey: cctvPort
 
     # ---------------------------------------------------------------------------
     # Health probe types (shared probe definitions)
@@ -576,7 +635,7 @@ app:
     # ---------------------------------------------------------------------------
     probes:
       liveness:
-        probeType: exec
+        probeType: tcpSocket
         initialDelaySeconds: 60
         periodSeconds: 10
         timeoutSeconds: 5
@@ -756,7 +815,6 @@ app:
           haidp.openapi.desc:
             configDataKey: haidpOpenapiDesc
   abc:
-
     # ---------------------------------------------------------------------------
     # Container image
     # ---------------------------------------------------------------------------
@@ -766,6 +824,69 @@ app:
       pullPolicy: IfNotPresent
       imagePullSecrets:
         - name: xxx
+    # ---------------------------------------------------------------------------
+    # Init containers
+    # ---------------------------------------------------------------------------
+    initContainers:
+      init-db:
+        image: registry.example.com/tools/db-init:1.0
+        imagePullPolicy: Always
+        command: ["sh", "-c"]
+        args: ["echo Initializing database; sleep 5"]
+        env:
+          - name: DB_HOST
+            value: "postgres"
+          - name: BUYBOOST_OPENAPI_HOST
+            configDataKey: buyboostOpenapiHost.host
+        envFrom:
+          - configMapRef:
+              name: db-config
+        volumes:
+          emptyDir:
+            workingVolume:
+              mountPath: /app/working
+          pvc:
+            dataVolume:
+              mountPath: /app/storage
+        resources:
+          qos: "BestEffort"
+          limits:
+            cpu: "100m"
+            memory: "128Mi"
+          requests:
+            cpu: "50m"
+            memory: "64Mi"
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+    # ---------------------------------------------------------------------------
+    # Sidecar containers
+    # ---------------------------------------------------------------------------
+    sidecars:
+      logger:
+        image: busybox
+        pullPolicy: IfNotPresent
+        imagePullSecrets:
+          - name: xxx
+        command: [ 'sh', '-c', 'tail -n+1 -F /work/app.log' ]
+        volumes:
+          emptyDir:
+            workingVolume:
+              mountPath: /work
+          pvc:
+            dataVolume:
+              mountPath: /app/storage
+
+      metrics:
+        image: prom/prometheus
+        pullPolicy: IfNotPresent
+        imagePullSecrets:
+          - name: xxx
+        args: [ "--config.file=/etc/prometheus/prometheus.yml" ]
+        volumeMounts:
+          - name: metrics-config
+            mountPath: /etc/prometheus
+
 
     # ---------------------------------------------------------------------------
     # Deployment metadata
@@ -803,20 +924,18 @@ app:
     # ---------------------------------------------------------------------------
     # Persistent storage
     # ---------------------------------------------------------------------------
-    persistence:
-      dataVolume:
-        annotations: [ ]
-        backup:
-          enabled: true
-          frequency: "@daily"
-          retention: 7
-          annotations: [ ]
-        storageClass: "crc-csi-hostpath-provisioner"
-        accessMode: ReadWriteOnce
-        size: 1Gi
-        name: evs-storage
-        mountPath: /app/storage
-
+    volumes:
+      pvc: # pvc volume type
+        dataVolume: # name
+          annotations: [ ] # will overwrite the top-level pvc.dataVolume.annotations if specified
+          backup:
+            annotations: [ ] # will overwrite the top-level pvc.dataVolume.backup.annotations if specified
+          mountPath: /app/storage # mount path inside the container
+      emptyDir: # emptyDir volume type
+        cacheVolume: # name
+          mountPath: /app/cache # mount path inside the container
+        workingVolume: # name
+          mountPath: /app/working # mount path inside the container
     # ---------------------------------------------------------------------------
     # Container ports (ports exposed by the container)
     # ---------------------------------------------------------------------------

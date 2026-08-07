@@ -32,9 +32,91 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- $pmap := $app.persistence | default dict }}
+      {{- $volumes := $app.volumes | default dict }}
+      {{- $volPvcMap := $volumes.pvc | default dict }}
+      {{- $volEmptyDirMap := $volumes.emptyDir | default dict }}
+      {{- $globalPersistence := $root.Values.persistence | default dict }}
+      {{- $globalPvc := $globalPersistence.pvc | default dict }}
+      {{- $globalEmptyDir := $globalPersistence.emptyDir | default dict }}
       {{- $fmap := $app.configFiles | default (list) }}
       {{- $containerPorts := $app.containerPorts | default (list) }}
+      {{- if $app.initContainers }}
+      initContainers:
+      {{- range $initName, $initCfg := $app.initContainers }}
+      - name: {{ include "app.kebab" $initName | trim }}
+        image: {{ $initCfg.image }}
+        imagePullPolicy: {{ $initCfg.imagePullPolicy | default "IfNotPresent" }}
+        {{- if $initCfg.command }}
+        command:
+          {{- toYaml $initCfg.command | nindent 10 }}
+        {{- end }}
+        {{- if $initCfg.args }}
+        args:
+          {{- toYaml $initCfg.args | nindent 10 }}
+        {{- end }}
+        {{- if $initCfg.env }}
+        env:
+          {{- range $envEntry := $initCfg.env }}
+          {{- if hasKey $envEntry "configDataKey" }}
+          - name: {{ $envEntry.name }}
+            value: '{{ include "app.envValue" (list (dict "configDataKey" $envEntry.configDataKey) $root.Values.configData (printf "initContainer %s env %s" $initName $envEntry.name)) }}'
+          {{- else }}
+          - name: {{ $envEntry.name }}
+            value: {{ $envEntry.value | quote }}
+          {{- end }}
+          {{- end }}
+        {{- end }}
+        {{- if $initCfg.envFrom }}
+        envFrom:
+          {{- toYaml $initCfg.envFrom | nindent 10 }}
+        {{- end }}
+        {{- $initVolumes := $initCfg.volumes | default dict }}
+        {{- $initVolPvc := $initVolumes.pvc | default dict }}
+        {{- $initVolEd := $initVolumes.emptyDir | default dict }}
+        {{- if or (gt (len $initVolPvc) 0) (gt (len $initVolEd) 0) }}
+        volumeMounts:
+        {{- range $vname, $vcfg := $initVolPvc }}
+          - name: '{{ printf "%s-%s-%s" (trim (include "app.fullname" $root)) (trim (include "app.kebab" $vname)) (trim (include "app.kebab" $appName | trim)) }}'
+            mountPath: {{ $vcfg.mountPath }}
+        {{- end }}
+        {{- range $vname, $vcfg := $initVolEd }}
+        {{- if $vcfg.mountPath }}
+          - name: '{{ printf "%s-%s-%s" (trim (include "app.fullname" $root)) (trim (include "app.kebab" $vname)) (trim (include "app.kebab" $appName | trim)) }}'
+            mountPath: {{ $vcfg.mountPath }}
+        {{- end }}
+        {{- end }}
+        {{- end }}
+        {{- $initQos := ($initCfg.resources).qos | default "BestEffort" }}
+        {{- if ne $initQos "BestEffort" }}
+        resources:
+          {{- if eq $initQos "Guaranteed" }}
+          requests:
+            cpu: {{ $initCfg.resources.limits.cpu }}
+            memory: {{ $initCfg.resources.limits.memory }}
+          limits:
+            cpu: {{ $initCfg.resources.limits.cpu }}
+            memory: {{ $initCfg.resources.limits.memory }}
+          {{- else if eq $initQos "Burstable" }}
+          requests:
+            cpu: {{ $initCfg.resources.requests.cpu }}
+            memory: {{ $initCfg.resources.requests.memory }}
+          {{- if $initCfg.resources.limits }}
+          limits:
+            {{- if $initCfg.resources.limits.cpu }}
+            cpu: {{ $initCfg.resources.limits.cpu }}
+            {{- end }}
+            {{- if $initCfg.resources.limits.memory }}
+            memory: {{ $initCfg.resources.limits.memory }}
+            {{- end }}
+          {{- end }}
+          {{- end }}
+        {{- end }}
+        {{- if $initCfg.securityContext }}
+        securityContext:
+          {{- toYaml $initCfg.securityContext | nindent 10 }}
+        {{- end }}
+      {{- end }}
+      {{- end }}
       containers:
       - name: {{ $root.Chart.Name }}
         image: {{ $app.image.repository }}:{{ $app.image.tag }}
@@ -47,9 +129,18 @@ spec:
         {{- $pkey := index $cp "portDefinitionKey" }}
         {{- if not (hasKey $root.Values.ports $pkey) }}{{- fail (printf "app.containerPorts[%d] portDefinitionKey %q not found in .Values.ports" $idx $pkey) }}{{- end }}
         {{- $p := index $root.Values.ports $pkey }}
-          - name: {{ lower $p.name }}
+        {{- if eq (include "app.isPortRange" $p) "true" }}
+        {{- $expanded := include "app.expandPortRange" (list $p (printf "container port %s" $pkey)) | fromJsonArray }}
+        {{- range $ep := $expanded }}
+          - name: {{ printf "%s-%s" (lower $ep.name) (trim (include "app.kebab" $appName | trim)) }}
+            containerPort: {{ $ep.port }}
+            protocol: {{ $ep.protocol }}
+        {{- end }}
+        {{- else }}
+          - name: {{printf "%s-%s" (trim (lower $p.name)) (trim (include "app.kebab" $appName | trim))}}
             containerPort: {{ include "app.resolvePort" (list $p.port $root.Values.configData (printf "container port %s" $pkey)) }}
             protocol: {{ $p.protocol | default "TCP" }}
+        {{- end }}
         {{- end }}
         {{- end }}
         env:
@@ -148,11 +239,17 @@ spec:
           {{- end }}
           {{- end }}
         {{- end }}
-        {{- if or (gt (len $pmap) 0) (gt (len $fmap) 0) }}
+        {{- if or (gt (len $volPvcMap) 0) (gt (len $volEmptyDirMap) 0) (gt (len $fmap) 0) }}
         volumeMounts:
-        {{- range $vname, $vcfg := $pmap }}
+        {{- range $vname, $vcfg := $volPvcMap }}
           - name: '{{ printf "%s-%s-%s" (trim (include "app.fullname" $root)) (trim (include "app.kebab" $vname)) (trim (include "app.kebab" $appName | trim)) }}'
             mountPath: {{ $vcfg.mountPath }}
+        {{- end }}
+        {{- range $vname, $vcfg := $volEmptyDirMap }}
+        {{- if $vcfg.mountPath }}
+          - name: '{{ printf "%s-%s-%s" (trim (include "app.fullname" $root)) (trim (include "app.kebab" $vname)) (trim (include "app.kebab" $appName | trim)) }}'
+            mountPath: {{ $vcfg.mountPath }}
+        {{- end }}
         {{- end }}
         {{- range $idx, $fcfg := $fmap }}
           - name: '{{ printf "%s-%s" (trim (include "app.fileResourceName" (list $root $fcfg))) (trim (include "app.kebab" $appName | trim)) }}'
@@ -165,12 +262,36 @@ spec:
             readOnly: true
         {{- end }}
         {{- end }}
-      {{- if or (gt (len $pmap) 0) (gt (len $fmap) 0) }}
+      {{- $initCtrMap := $app.initContainers | default dict }}
+      {{- $allInitVolPvc := dict }}
+      {{- $allInitVolEd := dict }}
+      {{- range $_, $ic := $initCtrMap }}
+      {{- range $vn, $vc := (($ic.volumes | default dict).pvc | default dict) }}
+      {{- $_ := set $allInitVolPvc $vn $vc }}
+      {{- end }}
+      {{- range $vn, $vc := (($ic.volumes | default dict).emptyDir | default dict) }}
+      {{- $_ := set $allInitVolEd $vn $vc }}
+      {{- end }}
+      {{- end }}
+      {{- $mergedPvc := merge $volPvcMap $allInitVolPvc }}
+      {{- $mergedEd := merge $volEmptyDirMap $allInitVolEd }}
+      {{- if or (gt (len $mergedPvc) 0) (gt (len $mergedEd) 0) (gt (len $fmap) 0) }}
       volumes:
-        {{- range $vname, $vcfg := $pmap }}
+        {{- range $vname, $vcfg := $mergedPvc }}
         - name: '{{ printf "%s-%s-%s" (trim (include "app.fullname" $root)) (trim (include "app.kebab" $vname)) (trim (include "app.kebab" $appName | trim)) }}'
           persistentVolumeClaim:
             claimName: '{{ default (printf "%s-%s-%s" (trim (include "app.fullname" $root)) (trim (include "app.kebab" $vname)) (trim (include "app.kebab" $appName | trim))) $vcfg.claimName }}'
+        {{- end }}
+        {{- range $vname, $vcfg := $mergedEd }}
+        {{- $globalEd := index $globalEmptyDir $vname | default dict }}
+        - name: '{{ printf "%s-%s-%s" (trim (include "app.fullname" $root)) (trim (include "app.kebab" $vname)) (trim (include "app.kebab" $appName | trim)) }}'
+          emptyDir:
+            {{- if $globalEd.medium }}
+            medium: {{ $globalEd.medium | quote }}
+            {{- end }}
+            {{- if $globalEd.sizeLimit }}
+            sizeLimit: {{ $globalEd.sizeLimit | quote }}
+            {{- end }}
         {{- end }}
         {{- range $idx, $fcfg := $fmap }}
         - name: '{{ printf "%s-%s" (trim (include "app.fileResourceName" (list $root $fcfg))) (trim (include "app.kebab" $appName | trim)) }}'

@@ -1,6 +1,9 @@
 {{- $root := . -}}
+{{- $globalPvc := ($root.Values.persistence | default dict).pvc | default dict }}
 {{- range $appName, $app := $root.Values.app }}
-{{- range $name, $cfg := $app.persistence }}
+{{- $volPvcMap := (($app.volumes | default dict).pvc | default dict) }}
+{{- range $name, $volCfg := $volPvcMap }}
+{{- $cfg := index $globalPvc $name | default dict }}
 {{- if and $cfg.backup $cfg.backup.enabled }}
 ---
 apiVersion: config.kio.kasten.io/v1alpha1
@@ -10,9 +13,10 @@ metadata:
   namespace: {{ $root.Release.Namespace }}
   labels:
     {{- include "app.labels" (list $root $appName) | nindent 4 }}
-  {{- if $cfg.backup.annotations }}
+  {{- $backupAnnots := ($volCfg.backup).annotations | default $cfg.backup.annotations }}
+  {{- if $backupAnnots }}
   annotations:
-    {{- include "annotationsSets" (list $cfg.backup.annotations $root $app.annotationSets) | trim | nindent 4 }}
+    {{- include "annotationsSets" (list $backupAnnots $root $app.annotationSets) | trim | nindent 4 }}
   {{- end }}
 spec:
   comment: "Backup policy for {{ $name }} PVC"

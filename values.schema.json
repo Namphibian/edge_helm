@@ -164,8 +164,35 @@
         },
         {
           "$ref": "#/definitions/configDataRef"
+        },
+        {
+          "$ref": "#/definitions/portRange"
         }
       ]
+    },
+    "portRange": {
+      "type": "object",
+      "required": ["range"],
+      "properties": {
+        "range": {
+          "type": "object",
+          "required": ["start", "end"],
+          "properties": {
+            "start": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "end": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     },
     "mapOrLiteralPortLookup": {
       "oneOf": [
@@ -697,6 +724,63 @@
       },
       "additionalProperties": false
     },
+    "persistence": {
+      "type": "object",
+      "description": "Global persistence definitions (templates) referenced by app volumes",
+      "properties": {
+        "pvc": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["storageClass", "accessMode", "size"],
+            "properties": {
+              "annotations": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "backup": {
+                "type": "object",
+                "properties": {
+                  "enabled": { "type": "boolean" },
+                  "frequency": { "type": "string" },
+                  "retention": { "type": "integer", "minimum": 1 },
+                  "annotations": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  }
+                },
+                "additionalProperties": true
+              },
+              "storageClass": { "type": "string" },
+              "accessMode": { "type": "string" },
+              "size": { "type": "string" }
+            },
+            "additionalProperties": true
+          }
+        },
+        "emptyDir": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "annotations": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "medium": {
+                "type": "string",
+                "enum": ["", "Memory"]
+              },
+              "sizeLimit": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
     "annotationSets": {
       "type": "object",
       "additionalProperties": {
@@ -828,65 +912,145 @@
           },
           "additionalProperties": true
         },
-        "persistence": {
+        "volumes": {
           "type": "object",
-          "additionalProperties": {
-            "type": "object",
-            "required": [
-              "storageClass",
-              "accessMode",
-              "size",
-              "mountPath"
-            ],
-            "properties": {
-              "annotations": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "backup": {
+          "description": "Per-app volume mount references to top-level persistence definitions",
+          "properties": {
+            "pvc": {
+              "type": "object",
+              "additionalProperties": {
                 "type": "object",
+                "required": ["mountPath"],
                 "properties": {
-                  "enabled": {
-                    "type": "boolean"
-                  },
-                  "frequency": {
-                    "type": "string"
-                  },
-                  "retention": {
-                    "type": "integer",
-                    "minimum": 1
-                  },
                   "annotations": {
                     "type": "array",
-                    "items": {
-                      "type": "string"
+                    "items": { "type": "string" },
+                    "description": "Overrides top-level pvc annotations if specified"
+                  },
+                  "backup": {
+                    "type": "object",
+                    "properties": {
+                      "annotations": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "Overrides top-level backup annotations if specified"
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "mountPath": {
+                    "type": "string"
+                  },
+                  "claimName": {
+                    "type": "string",
+                    "description": "Optional override for the PVC claim name"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "emptyDir": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "mountPath": {
+                    "type": "string",
+                    "description": "Mount path inside the container"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "initContainers": {
+          "type": "object",
+          "description": "Init containers to run before the main container",
+          "additionalProperties": {
+            "type": "object",
+            "required": ["image"],
+            "properties": {
+              "image": { "type": "string" },
+              "imagePullPolicy": {
+                "type": "string",
+                "enum": ["Always", "IfNotPresent", "Never"]
+              },
+              "command": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "args": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "env": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["name"],
+                  "properties": {
+                    "name": { "type": "string" },
+                    "value": { "type": "string" },
+                    "configDataKey": { "type": "string" }
+                  },
+                  "additionalProperties": false
+                }
+              },
+              "envFrom": {
+                "type": "array",
+                "items": { "type": "object" }
+              },
+              "volumes": {
+                "type": "object",
+                "description": "Volume mount references (same structure as app-level volumes)",
+                "properties": {
+                  "pvc": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "required": ["mountPath"],
+                      "properties": {
+                        "mountPath": { "type": "string" }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "emptyDir": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "properties": {
+                        "mountPath": {
+                          "type": "string",
+                          "description": "Mount path inside the init container"
+                        }
+                      },
+                      "additionalProperties": false
                     }
                   }
                 },
+                "additionalProperties": false
+              },
+              "resources": {
+                "type": "object",
+                "properties": {
+                  "qos": {
+                    "type": "string",
+                    "enum": ["Guaranteed", "Burstable", "BestEffort"]
+                  },
+                  "requests": { "type": "object" },
+                  "limits": { "type": "object" }
+                },
                 "additionalProperties": true
               },
-              "storageClass": {
-                "type": "string"
-              },
-              "accessMode": {
-                "type": "string"
-              },
-              "size": {
-                "type": "string"
-              },
-              "name": {
-                "$ref": "#/definitions/k8sPortName"
-              },
-              "mountPath": {
-                "type": "string"
-              },
-              "claimName": {
-                "type": "string"
+              "securityContext": {
+                "type": "object",
+                "additionalProperties": true
               }
             },
-            "additionalProperties": true
+            "additionalProperties": false
           }
         },
         "containerPorts": {
